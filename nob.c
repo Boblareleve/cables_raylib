@@ -22,8 +22,8 @@ Cmd cmd = {0};
                      "-I/home/augustin/C/my_lib",\
                      "-Wall",\
                      "-Wextra",\
-                     "-std=c2x",\
-                     "-pedantic"
+                     "-std=c2x"
+                     //"-pedantic"
 #define GENERAL_FLAGS "-Wall", "-Wno-gnu-binary-literal", "-Wno-missing-braces"
 #define LINK_FLAGS "-L./lib", "-lm"
 
@@ -101,12 +101,13 @@ Arg_Shell_List arg_parse(int argc, char **argv)
         else if (!memlitcmp(argv[i], "release"))
         {
             cmd_append(&res.additionnal_compilation_flags, "-O2");
-            // cmd_append(&res.additionnal_link_flags, "-l:libraylib.a");
-            cmd_append(&res.additionnal_link_flags, "-l:libraylib_debug.a");
+            cmd_append(&res.additionnal_link_flags, "-l:libraylib.a");
+            // cmd_append(&res.additionnal_link_flags, "-l:libraylib_debug.a");
             res.target = release;
         }
         else if (!memlitcmp(argv[i], "gdb"))
         {
+            cmd_append(&res.additionnal_compilation_flags, "-DDEBUG");
             cmd_append(&res.additionnal_compilation_flags, "-ggdb");
             cmd_append(&res.additionnal_link_flags, "-l:libraylib_debug.a");
             res.target = gdb;

@@ -6,15 +6,44 @@
 #include <limits.h>
 #include <stdio.h>
 #include <math.h>
+#include <stdlib.h>
+#include <stdint.h>
+#include <assert.h>
 
 #define PRINT_IMPLEMENTATION
-#include "print.h"
 #define STRING_IMPLEMENTATION
 #define STRING_FILEIO
-#include "Str.h"
 #define SET_IMPLEMENTATION
+#define ALF_IMPLEMENTATION
+
+
+
+void *align_alloc(size_t size, size_t align)
+{
+    void *initial_alloc = malloc(sizeof(void*) + size + align);
+
+    void *res = (void*)(((uintptr_t)initial_alloc & ~((uintptr_t)align - 1)) + align);
+    assert(((uintptr_t)res & ((uintptr_t)align - 1)) == 0);
+    assert((uintptr_t)((void**)res - 1) >= (uintptr_t)initial_alloc);
+
+    ((void**)res)[-1] = initial_alloc;
+
+    return res;
+}
+void align_free(void *ptr)
+{
+    assert(ptr - 0xffff <= (((void**)ptr)[-1]) && (((void**)ptr)[-1]) <= ptr + 0xffff);
+    free(((void**)ptr)[-1]);
+}
+
+#define ALF_ALLOCATOR(size, align) align_alloc(size, align)
+#define ALF_FREE(ptr) align_free(ptr)
+
+#include "print.h"
+#include "Str.h"
 #include "sets.h"
 #include "sa.h"
+#include "alf.h"
 
 #include "../engin/cell_auto.h"
 #include "../engin/editor.h"
@@ -53,11 +82,12 @@
     print_buffer_size = 0\
 )
 #define Sprint_Vector2(v)\
-({\
+(char*)({\
     print_buffer_size = snprintf(print_buffer, print_buffer_size, "(%f,%f)", v.x, v.y);\
     print_buffer[print_buffer_size + 1] = '\0';\
     print_buffer;\
 })
+
 
 
 static int _LATCH;
@@ -72,8 +102,8 @@ DA_TYPEDEF_ARRAY(Texture2D);
 SA_TYPEDEF_ARRAY(float);
 typedef struct Texs {
     //tex index ; tex chunk
-    sa_float *tex_chunks_x; // for the variant off o on
-    sa_float *tex_chunks_y; // for the type
+    // sa_float *tex_chunks_x; // for the variant off o on
+    // sa_float *tex_chunks_y; // for the type
     float cell_size;
     Texture2D  tex;
 } Texs;
@@ -118,11 +148,11 @@ Texs Texs_make(const char *atlas_name)
 {
     Texs res = {
         .tex = load_tex(atlas_name),
-        .tex_chunks_x = sa_make(res.tex_chunks_x, 3),
-        .tex_chunks_y = sa_make(res.tex_chunks_y, 5),
+        /* .tex_chunks_x = sa_make(res.tex_chunks_x, 3),
+        .tex_chunks_y = sa_make(res.tex_chunks_y, 5), */
         .cell_size = W
     };
-    float offset = 0.;
+    /* float offset = 0.;
     for (int i = 0; i < res.tex_chunks_y->size; i++)
     {
         res.tex_chunks_y->arr[i] = offset;
@@ -133,14 +163,14 @@ Texs Texs_make(const char *atlas_name)
     {
         res.tex_chunks_x->arr[i] = offset;
         offset += res.cell_size;
-    }
+    } */
     return res;
 }
 void Texs_free(Texs *obj)
 {
     UnloadTexture(obj->tex);
-    sa_free(obj->tex_chunks_x);
-    sa_free(obj->tex_chunks_y);
+    /* sa_free(obj->tex_chunks_x);
+    sa_free(obj->tex_chunks_y); */
 }
 
 
@@ -166,7 +196,8 @@ Pos_Globale screen_to_world_pos(Camera2D cam, Vector2 pos)
 
 Window Window_make(const char *name)
 {
-    SetTraceLogLevel(LOG_WARNING);
+    SetTraceLogLevel(LOG_DEBUG);
+    // SetTraceLogLevel(LOG_WARNING);
     // SetTargetFPS(INT32_MAX);
     SetTargetFPS(60);
     InitWindow(900, 900, name);
@@ -318,21 +349,31 @@ void Window_draw(const Window *obj)
                              x <= rd_ws.chunk.x;
                              x++
                     ) {
-                        Chunk_draw(
-                            obj,
-                            set_Chunk_get_(
-                                &obj->wrd.chunks, 
-                                (Chunk){ .pos = (Pos){ .x = x, .y = y } }
-                            )
+                        Item_chunks *chunk = set_Item_chunks_get(
+                            &obj->wrd.chunks,
+                            (Item_chunks){ .pos = (Pos){
+                                .x = x,
+                                .y = y
+                            }}
                         );
-                        draw_count++;
+                        if (chunk)
+                        {
+                            Chunk_draw(obj, chunk->data);
+                            draw_count++;
+                        }
+                        if (CHUNK_POS_VALUE)
+                            DrawTextF("(%d, %d)", 
+                                x * CHUNK_WORLD_SIZE + 4,
+                                -y * CHUNK_WORLD_SIZE + 4 - CHUNK_WORLD_SIZE,
+                                4., PURPLE, x, y
+                            );
                     }
                 }
             }
             else {
-                foreach_ptr (Chunk, chunk, &obj->wrd.chunks.items)
+                for_set (Item_chunks, chunk, &obj->wrd.chunks)
                 {
-                    Chunk_draw(obj, chunk);
+                    Chunk_draw(obj, chunk->data);
                     draw_count++;
                 }
             }
@@ -371,27 +412,27 @@ void inputs(Window *win)
         win->ui.mouse_pos.cell
     );
 
-    { // cam mouvements
-        const float mouv_speed = 5. * 60. / GetFPS();
-        if (IsKeyDown(KEY_D)) 
+    { // camera mouvements
+        const float mouv_speed = 5. * 60. / GetFPS() * (2. / win->cam.zoom);
+        if (IsKeyDown(KEY_D))
         {
             printf("right"); 
             UPDATE_LINE;
             win->cam.target.x += mouv_speed;
         }
-        if (IsKeyDown(KEY_A)) 
+        if (IsKeyDown(KEY_A))
         {
             printf("left"); 
             UPDATE_LINE;
             win->cam.target.x -= mouv_speed;
         }
-        if (IsKeyDown(KEY_W)) 
+        if (IsKeyDown(KEY_W))
         {
             printf("up"); 
             UPDATE_LINE;
             win->cam.target.y -= mouv_speed;
         }    
-        if (IsKeyDown(KEY_S)) 
+        if (IsKeyDown(KEY_S))
         {
             printf("down"); 
             UPDATE_LINE;
@@ -520,9 +561,16 @@ typedef struct ToPlace
 
 int main(void)
 {
+    // InitWindow(900, 900, "name");
+    // CloseWindow();
+
+
+    // return 0;
     Window win = Window_make("main");
     
-    
+    // Window_free(&win);
+    // return 0;
+
     if (0)
     {
         ToPlace poss[] = {
@@ -582,10 +630,10 @@ int main(void)
             World_set_cell(&win.wrd, poss[i].chunk, poss[i].cell, poss[i].value);
         
         if (0) {
-            Chunk *chunk = set_Chunk_get_pt(
+            Chunk *chunk = set_Item_chunks_get(
                 &win.wrd.chunks, 
-                &(Chunk){0}
-            );
+                (Item_chunks){0}
+            )->data;
             chunk->arr[0x01] &= 0b1111;
             chunk->arr[0x01] |= cable_on;
 
@@ -596,10 +644,10 @@ int main(void)
 
         for (i = 0; i < sizeof(poss)/sizeof(poss[0]); i++)
         {
-            Chunk *chunk = set_Chunk_get_pt(
+            Chunk *chunk = set_Item_chunks_get(
                 &win.wrd.chunks, 
-                &(Chunk){ .pos = poss[i].chunk }
-            );
+                (Item_chunks){ .pos = poss[i].chunk }
+            )->data;
             printf("connection -> (%+i, %+i).%02x -> %x\n", 
                 poss[i].chunk.x, poss[i].chunk.y,
                 poss[i].cell,
@@ -610,7 +658,7 @@ int main(void)
         for (int y = H-1; y >= 0; y--)
         {
             for (int x = 0; x < W; x++)
-                printf("%02x ", set_Chunk_get_pt(&win.wrd.chunks, &(Chunk){.pos=(Pos){0}})->arr2D[x][y]);
+                printf("%02x ", set_Item_chunks_get(&win.wrd.chunks, (Item_chunks){ .pos= (Pos){0} })->data->arr2D[x][y]);
             printf("\n");
         }
     }
