@@ -196,8 +196,8 @@ Pos_Globale screen_to_world_pos(Camera2D cam, Vector2 pos)
 
 Window Window_make(const char *name)
 {
-    SetTraceLogLevel(LOG_DEBUG);
-    // SetTraceLogLevel(LOG_WARNING);
+    // SetTraceLogLevel(LOG_DEBUG);
+    SetTraceLogLevel(LOG_WARNING);
     // SetTargetFPS(INT32_MAX);
     SetTargetFPS(60);
     InitWindow(900, 900, name);
@@ -226,9 +226,6 @@ void Window_free(Window *obj)
     World_free(&obj->wrd);
     CloseWindow();
 }
-
-
-
 
 
 static inline void draw_Texs_Cell_V(const Texs *texs, Cell id, Rectangle pos)
@@ -552,6 +549,8 @@ void inputs(Window *win)
 }
 
 
+
+
 typedef struct ToPlace 
 {
     Pos chunk;
@@ -559,109 +558,23 @@ typedef struct ToPlace
     Cell value;
 } ToPlace;
 
+
+
+/* TODO:
+
+ * edition 
+    -> selection copy paste rotate flip 
+ * load/save file X
+ * color by chunk for thread lockless
+ * shader render
+ * finish connection engin (support for bridge and update when possing T en N)
+
+*/
+
 int main(void)
-{
-    // InitWindow(900, 900, "name");
-    // CloseWindow();
-
-
-    // return 0;
+{   
     Window win = Window_make("main");
     
-    // Window_free(&win);
-    // return 0;
-
-    if (0)
-    {
-        ToPlace poss[] = {
-            
-/*             { .chunk = (Pos){ .x = 0, .y = 0 },  .cell = 0x00, .value = cable_off},
-            { .chunk = (Pos){ .x = 0, .y = 0 },  .cell = 0x10, .value = cable_off},
-            { .chunk = (Pos){ .x = 0, .y = 0 },  .cell = 0x01, .value = cable_off},
-            { .chunk = (Pos){ .x = 0, .y = 0 },  .cell = 0x0f, .value = cable_off},
-            { .chunk = (Pos){ .x = 0, .y = 0 },  .cell = 0x1f, .value = cable_off},
-            { .chunk = (Pos){ .x = 0, .y = 0 },  .cell = 0x0e, .value = cable_off},
-            { .chunk = (Pos){ .x = 0, .y = 0 },  .cell = 0xf0, .value = cable_off},
-            { .chunk = (Pos){ .x = 0, .y = 0 },  .cell = 0xe0, .value = cable_off},
-            { .chunk = (Pos){ .x = 0, .y = 0 },  .cell = 0xf1, .value = cable_off},
-            { .chunk = (Pos){ .x = 0, .y = 0 },  .cell = 0xff, .value = cable_off},
-            { .chunk = (Pos){ .x = 0, .y = 0 },  .cell = 0xef, .value = cable_off},
-            { .chunk = (Pos){ .x = 0, .y = 0 },  .cell = 0xfe, .value = cable_off},
-            { .chunk = (Pos){ .x = 0, .y = -1 },  .cell = 0x00, .value = cable_off},
-            { .chunk = (Pos){ .x = 0, .y = -1 },  .cell = 0x0f, .value = cable_off},
-            { .chunk = (Pos){ .x = 0, .y = -1 },  .cell = 0xf0, .value = cable_off},
-            { .chunk = (Pos){ .x = 0, .y = -1 },  .cell = 0xff, .value = cable_off},
-            { .chunk = (Pos){ .x = 1, .y = 0 },  .cell = 0x00, .value = cable_off},
-            { .chunk = (Pos){ .x = 1, .y = 0 },  .cell = 0x0f, .value = cable_off},
-            { .chunk = (Pos){ .x = 1, .y = 0 },  .cell = 0xf0, .value = cable_off},
-            { .chunk = (Pos){ .x = 1, .y = 0 },  .cell = 0xff, .value = cable_off},
-            { .chunk = (Pos){ .x = -1, .y = 0 },  .cell = 0x00, .value = cable_off},
-            { .chunk = (Pos){ .x = -1, .y = 0 },  .cell = 0x0f, .value = cable_off},
-            { .chunk = (Pos){ .x = -1, .y = 0 },  .cell = 0xf0, .value = cable_off},
-            { .chunk = (Pos){ .x = -1, .y = 0 },  .cell = 0xff, .value = cable_off},
-            */
-/*             { .chunk = (Pos){ .x = -1,.y = -1},  .cell = 0xfe, .value = cable_off},
-            { .chunk = (Pos){ .x = 0, .y = -1},  .cell = 0x1e, .value = cable_off},
-            { .chunk = (Pos){ .x = 0, .y = -1},  .cell = 0x0e, .value = cable_off},
-            { .chunk = (Pos){ .x = -1,.y = -1},  .cell = 0xff, .value = cable_off},
-            { .chunk = (Pos){ .x = 0, .y = -1},  .cell = 0x1f, .value = cable_off},
-            { .chunk = (Pos){ .x = 0, .y = -1},  .cell = 0x0f, .value = cable_off},
-            { .chunk = (Pos){ .x = 0, .y = 0 },  .cell = 0x01, .value = cable_off},
-            { .chunk = (Pos){ .x = 0, .y = 0 },  .cell = 0x02, .value = cable_off},
-            { .chunk = (Pos){ .x = 0, .y = 0 },  .cell = 0x03, .value = cable_off},
- */
-            // { .chunk = (Pos){ .x = 0, .y = 0 }, .cell = 0x00, .value = cable_off},
-            { .chunk = (Pos){ .x = 0, .y = 0 }, .cell = 0x02, .value = cable_off},
-            { .chunk = (Pos){ .x = 0, .y = 0 }, .cell = 0x0a, .value = cable_off},
-            { .chunk = (Pos){ .x = 0, .y = 0 }, .cell = 0x2a, .value = cable_off},
-            { .chunk = (Pos){ .x = 0, .y = 0 }, .cell = 0x1a, .value = bridge},
-            { .chunk = (Pos){ .x = 0, .y = 0 }, .cell = 0x01, .value = bridge},
-            { .chunk = (Pos){ .x = 0, .y = 0 }, .cell = 0x02, .value = bridge},
-            { .chunk = (Pos){ .x = 0, .y = 0 }, .cell = 0x12, .value = bridge},
-            { .chunk = (Pos){ .x = 0, .y = 0 }, .cell = 0x11, .value = bridge},
-            { .chunk = (Pos){ .x = 0, .y = 0 }, .cell = 0x12, .value = bridge},
-            { .chunk = (Pos){ .x = 0, .y = 0 }, .cell = 0x03, .value = cable_off},
-            { .chunk = (Pos){ .x = 0, .y = 0 }, .cell = 0x13, .value = cable_off},
-        };
-        
-
-        size_t i = 0;
-        for (i = 0; i < sizeof(poss)/sizeof(poss[0]); i++)
-            World_set_cell(&win.wrd, poss[i].chunk, poss[i].cell, poss[i].value);
-        
-        if (0) {
-            Chunk *chunk = set_Item_chunks_get(
-                &win.wrd.chunks, 
-                (Item_chunks){0}
-            )->data;
-            chunk->arr[0x01] &= 0b1111;
-            chunk->arr[0x01] |= cable_on;
-
-            chunk->arr[0x1a] &= 0b1111;
-            chunk->arr[0x1a] |= cable_on;
-        }
-        
-
-        for (i = 0; i < sizeof(poss)/sizeof(poss[0]); i++)
-        {
-            Chunk *chunk = set_Item_chunks_get(
-                &win.wrd.chunks, 
-                (Item_chunks){ .pos = poss[i].chunk }
-            )->data;
-            printf("connection -> (%+i, %+i).%02x -> %x\n", 
-                poss[i].chunk.x, poss[i].chunk.y,
-                poss[i].cell,
-                chunk->arr[poss[i].cell]
-            );
-        }
-        
-        for (int y = H-1; y >= 0; y--)
-        {
-            for (int x = 0; x < W; x++)
-                printf("%02x ", set_Item_chunks_get(&win.wrd.chunks, (Item_chunks){ .pos= (Pos){0} })->data->arr2D[x][y]);
-            printf("\n");
-        }
-    }
     
     while (!WindowShouldClose())
     {

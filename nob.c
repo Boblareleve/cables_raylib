@@ -93,6 +93,7 @@ Arg_Shell_List arg_parse(int argc, char **argv)
             cmd_append(&res.additionnal_compilation_flags, "-fsanitize=address");
             cmd_append(&res.additionnal_compilation_flags, "-fsanitize=undefined");
             cmd_append(&res.additionnal_compilation_flags, "-g3");
+            cmd_append(&res.additionnal_compilation_flags, "-gdwarf-2");
             cmd_append(&res.additionnal_compilation_flags, "-DDEBUG");
             cmd_append(&res.additionnal_link_flags, "-l:libraylib_debug.a");
             
@@ -108,6 +109,7 @@ Arg_Shell_List arg_parse(int argc, char **argv)
         else if (!memlitcmp(argv[i], "gdb"))
         {
             cmd_append(&res.additionnal_compilation_flags, "-DDEBUG");
+            cmd_append(&res.additionnal_compilation_flags, "-gdwarf-2");
             cmd_append(&res.additionnal_compilation_flags, "-ggdb");
             cmd_append(&res.additionnal_link_flags, "-l:libraylib_debug.a");
             res.target = gdb;
