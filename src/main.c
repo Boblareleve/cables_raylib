@@ -15,6 +15,7 @@
 #define STRING_FILEIO
 #define SET_IMPLEMENTATION
 #define ALF_IMPLEMENTATION
+#define RAD_IMPLEMENTATION
 
 
 
@@ -39,14 +40,15 @@ void align_free(void *ptr)
 #define ALF_ALLOCATOR(size, align) align_alloc(size, align)
 #define ALF_FREE(ptr) align_free(ptr)
 
-#include "print.h"
-#include "Str.h"
-#include "sets.h"
-#include "sa.h"
 #include "alf.h"
+#include "sets.h"
+#define STRING_FILEIO
+#include "Str.h"
+#include "print.h"
+#include "sa.h"
 
-#include "../engin/cell_auto.h"
-#include "../engin/editor.h"
+
+#include "../engin/engin.h"
 
 #ifdef CHUNK_GRID
 # define CHUNK_GRID_VALUE 1
@@ -114,8 +116,18 @@ typedef struct Ui
 {
     Cell current_state;
     Direction current_direction;
-    Pos_Globale mouse_pos;
 
+    struct {
+        Pos start_selection_mouse_pos;
+        Pos end_selection_mouse_pos;
+        enum {
+            selection_off,
+            selection_start,
+            selection_finished
+        } selection_state;
+    };
+
+    Pos mouse_pos;
 } Ui;
 
 typedef struct Window
@@ -174,25 +186,36 @@ void Texs_free(Texs *obj)
 }
 
 
-Pos_Globale vec2_world_to_pos_globale(Vector2 pos)
+Pos screen_to_Pos(Camera2D cam, Vector2 pos)
 {
+    pos = GetScreenToWorld2D(pos, cam);
     pos.x /= W;
     pos.y /= H;
 
-    return (Pos_Globale){
-        .chunk = (Pos){
-            .x = ((int)( pos.x + (pos.x < 0 ? -1 : 0)) >> 4),
-            .y = ((int)(-pos.y + (pos.y > 0 ? -1 : 0)) >> 4)
-        },
-        .cell = (((int)( pos.x + (pos.x < 0 ? -1 : 0)) & 0xf) << 4)
-              |  ((int)(-pos.y + (pos.y > 0 ? -1 : 0)) & 0xf)
+    return (Pos){
+        .x = (int)( pos.x + (pos.x < 0 ? -1 : 0)),
+        .y = (int)(-pos.y + (pos.y > 0 ? -1 : 0))
     };
 }
-Pos_Globale screen_to_world_pos(Camera2D cam, Vector2 pos)
+Pos_Globale Pos_to_Pos_Globale(Pos pos)
 {
-    Vector2 vpos = GetScreenToWorld2D(pos, cam);
-    return vec2_world_to_pos_globale(vpos);
+    return (Pos_Globale){
+        .chunk = (Pos){
+            .x = (pos.x >> 4),
+            .y = (pos.y >> 4)
+        },
+        .cell = ((pos.x & 0xf) << 4)
+              |  (pos.y & 0xf)
+    };
 }
+Pos_Globale screen_to_Pos_Globale(Camera2D cam, Vector2 pos)
+{
+    return Pos_to_Pos_Globale(
+        screen_to_Pos(cam, pos)
+    );
+}
+
+
 
 Window Window_make(const char *name)
 {
@@ -215,7 +238,7 @@ Window Window_make(const char *name)
         .ui = (Ui){ 
             .current_state = cable_off,
             .current_direction = up,
-            .mouse_pos = screen_to_world_pos(cam, GetMousePosition())
+            .mouse_pos = screen_to_Pos(cam, GetMousePosition())
         }
     };
     return res;
@@ -317,98 +340,126 @@ void Chunk_draw(const Window *win, const Chunk *obj)
         );
 }
 
+void swap(int *a, int *b) { int tmp = *a; *a = *b; *b = tmp; }
+void sort_Pos_Globale(Pos *pos1, Pos *pos2)
+{
+    if (pos1->x > pos2->x)
+        swap(&pos1->x, &pos2->x);
+    if (pos1->y < pos2->y)
+        swap(&pos1->y, &pos2->y);
+    
+}
+
 void Window_draw(const Window *obj)
 {
     int draw_count = 0;
     
-    BegEnd(Drawing,(),()) 
+    
+    ClearBackground(DARKGRAY);
+    DrawTextF("[FPS %d]", 10, 10, 24, WHITE, GetFPS());
+    
+    BegEnd(Mode2D,(obj->cam),())
     {
-        ClearBackground(DARKGRAY);
-        DrawTextF("[FPS %d]", 10, 10, 24, WHITE, GetFPS());
-        
-        BegEnd(Mode2D,(obj->cam),())
         {
-            if (1) {
-                const Pos_Globale lu_ws = vec2_world_to_pos_globale(GetScreenToWorld2D(
-                    (Vector2){ 0, 0 },
-                    obj->cam
-                ));
-                const Pos_Globale rd_ws = vec2_world_to_pos_globale(GetScreenToWorld2D(
-                    (Vector2){ GetScreenWidth(), GetScreenHeight() },
-                    obj->cam
-                ));
 
-                for (int y =  rd_ws.chunk.y;
-                         y <= lu_ws.chunk.y;
-                         y++
+            const Pos_Globale lu_ws = screen_to_Pos_Globale(
+                obj->cam, 
+                (Vector2){ 0, 0 }
+            );
+            const Pos_Globale rd_ws = screen_to_Pos_Globale(
+                obj->cam, 
+                (Vector2){ GetScreenWidth(), GetScreenHeight() }
+            );
+    
+            for (int y =  rd_ws.chunk.y;
+                        y <= lu_ws.chunk.y;
+                        y++
+            ) {
+                for (int x =  lu_ws.chunk.x;
+                            x <= rd_ws.chunk.x;
+                            x++
                 ) {
-                    for (int x =  lu_ws.chunk.x;
-                             x <= rd_ws.chunk.x;
-                             x++
-                    ) {
-                        Item_chunks *chunk = set_Item_chunks_get(
-                            &obj->wrd.chunks,
-                            (Item_chunks){ .pos = (Pos){
-                                .x = x,
-                                .y = y
-                            }}
-                        );
-                        if (chunk)
-                        {
-                            Chunk_draw(obj, chunk->data);
-                            draw_count++;
-                        }
-                        if (CHUNK_POS_VALUE)
-                            DrawTextF("(%d, %d)", 
-                                x * CHUNK_WORLD_SIZE + 4,
-                                -y * CHUNK_WORLD_SIZE + 4 - CHUNK_WORLD_SIZE,
-                                4., PURPLE, x, y
-                            );
+                    Item_chunks *chunk = set_Item_chunks_get(
+                        &obj->wrd.chunks,
+                        (Item_chunks){ .pos = (Pos){
+                            .x = x,
+                            .y = y
+                        }}
+                    );
+                    if (chunk)
+                    {
+                        Chunk_draw(obj, chunk->data);
+                        draw_count++;
                     }
-                }
-            }
-            else {
-                for_set (Item_chunks, chunk, &obj->wrd.chunks)
-                {
-                    Chunk_draw(obj, chunk->data);
-                    draw_count++;
+                    if (CHUNK_POS_VALUE)
+                        DrawTextF("(%d, %d)", 
+                            x * CHUNK_WORLD_SIZE + 4,
+                            -y * CHUNK_WORLD_SIZE + 4 - CHUNK_WORLD_SIZE,
+                            4., PURPLE, x, y
+                        );
                 }
             }
             
-            { // draw overed cell
-                const Pos_Globale gpos = obj->ui.mouse_pos;
-                DrawRectangleLines(
-                     gpos.chunk.x * CHUNK_WORLD_SIZE + W * (gpos.cell >> 4),
-                    -gpos.chunk.y * CHUNK_WORLD_SIZE - H * (gpos.cell & 0xf) - H,
-                    obj->texs.cell_size,
-                    obj->texs.cell_size,
-                    WHITE
-                );
-            }
         }
-        draw_Texs_Cell_V(
-            &obj->texs,
-            obj->ui.current_state,
-            (Rectangle){
-                .x = 0, .y = 0,
-                .width =  8 * obj->texs.cell_size,
-                .height = 8 * obj->texs.cell_size,
-            }
-        );
+
+        if (obj->ui.selection_state == selection_off) 
+        { // draw overed cell
+            const Pos gpos = obj->ui.mouse_pos;
+            DrawRectangleLines(
+                 gpos.x * W,
+                -gpos.y * H - H,
+                obj->texs.cell_size,
+                obj->texs.cell_size,
+                WHITE
+            );
+        }
+        else 
+        {
+            Pos pos1 = obj->ui.start_selection_mouse_pos;
+            Pos pos2 = (obj->ui.selection_state == selection_start) ?
+                            obj->ui.mouse_pos
+                          : obj->ui.end_selection_mouse_pos;
+            
+            sort_Pos_Globale(&pos1, &pos2);
+            int width = pos2.x - pos1.x + 1;
+            int height = pos1.y - pos2.y + 1;
+            
+            DrawRectangle(
+                 pos1.x * W,
+                -pos1.y * H - H,
+                width  * obj->texs.cell_size,
+                height * obj->texs.cell_size,
+                (Color){ 0, 121, 241, 55 }
+            );
+            DrawRectangleLinesEx(
+                (Rectangle){
+                   .x =  pos1.x * W,
+                   .y = -pos1.y * H - H,
+                   .width  = width  * obj->texs.cell_size,
+                   .height = height * obj->texs.cell_size,
+                },
+                2, (Color){ 0, 121, 241, 155 }
+            );
+
+        }
     }
+    draw_Texs_Cell_V(
+        &obj->texs,
+        obj->ui.current_state,
+        (Rectangle){
+            .x = 0, .y = 0,
+            .width =  8 * obj->texs.cell_size,
+            .height = 8 * obj->texs.cell_size,
+        }
+    );
 }
 
 
 
 void inputs(Window *win)
 {
-    win->ui.mouse_pos = screen_to_world_pos(win->cam, GetMousePosition());
-    if (0) printf("(%i,%i).%02x\n", 
-        win->ui.mouse_pos.chunk.x, 
-        win->ui.mouse_pos.chunk.y, 
-        win->ui.mouse_pos.cell
-    );
-
+    win->ui.mouse_pos = screen_to_Pos(win->cam, GetMousePosition());
+    
     { // camera mouvements
         const float mouv_speed = 5. * 60. / GetFPS() * (2. / win->cam.zoom);
         if (IsKeyDown(KEY_D))
@@ -508,13 +559,41 @@ void inputs(Window *win)
                                        & (TYPE_MASK | VARIANT_MASK)
                                     )  | win->ui.current_direction;
         }
-    
-        if (IsMouseButtonDown(MOUSE_BUTTON_LEFT))
+        
+        
+        if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
         {
+            if (IsKeyDown(KEY_LEFT_SHIFT))
+            {
+                if (win->ui.selection_state == selection_off)
+                {
+                    win->ui.start_selection_mouse_pos = win->ui.mouse_pos;
+                    win->ui.selection_state = selection_start;
+                }
+                else if (win->ui.selection_state == selection_start)
+                {
+                    win->ui.end_selection_mouse_pos = win->ui.mouse_pos;
+                    win->ui.selection_state = selection_finished;
+                }
+                else
+                {
+                    win->ui.start_selection_mouse_pos = win->ui.mouse_pos;
+                    win->ui.selection_state = selection_start;
+                }
+            }
+            else
+                win->ui.selection_state = selection_off;
+        }
+        if (win->ui.selection_state == selection_off
+              && IsMouseButtonDown(MOUSE_BUTTON_LEFT)
+        ) {
+            Pos_Globale gpos = Pos_to_Pos_Globale(win->ui.mouse_pos);
+
+            /* TODO: interpolate to set all cell in mouse trace */
             World_set_cell(
                 &win->wrd,
-                win->ui.mouse_pos.chunk,
-                win->ui.mouse_pos.cell,
+                gpos.chunk,
+                gpos.cell,
                 win->ui.current_state
             );
             printf("click!");
@@ -522,10 +601,12 @@ void inputs(Window *win)
         }
         if (IsMouseButtonDown(MOUSE_BUTTON_RIGHT))
         {
+            Pos_Globale gpos = Pos_to_Pos_Globale(win->ui.mouse_pos);
+            
             World_set_cell(
                 &win->wrd,
-                win->ui.mouse_pos.chunk,
-                win->ui.mouse_pos.cell,
+                gpos.chunk,
+                gpos.cell,
                 empty
             );
             printf("click!");
@@ -551,20 +632,13 @@ void inputs(Window *win)
 
 
 
-typedef struct ToPlace 
-{
-    Pos chunk;
-    Pos_Chunk cell;
-    Cell value;
-} ToPlace;
-
-
 
 /* TODO:
 
  * edition 
-    -> selection copy paste rotate flip 
- * load/save file X
+    -> selection copy paste rotate flip X
+ * load/save file
+    -> GUI
  * color by chunk for thread lockless
  * shader render
  * finish connection engin (support for bridge and update when possing T en N)
@@ -575,12 +649,35 @@ int main(void)
 {   
     Window win = Window_make("main");
     
-    
-    while (!WindowShouldClose())
+
+    /* World wrd = err_attrib(load_World("./save/world1.wrd"), wrderr, 
+        {
+            printf("error\n");
+        }
+    ); */
+    err_if (load_World("./save/world1.wrd"), wrderr) {
+        perror("open");
+        printf("%s\n", wrderr.error);
+    } else {
+        World_free(&win.wrd);
+        win.wrd = wrderr.data;
+    }
+   
+    while (!WindowShouldClose()) 
     {
-        Window_draw(&win);
-        inputs(&win);
+        BegEnd(Drawing,(),()) 
+        {
+            inputs(&win);
+            Window_draw(&win);
+        }
     } 
+    
+    const char *err_save = save_World(&win.wrd, "./save/world1.wrd");
+    if (err_save)
+    {
+        perror("save World");
+        printf(err_save);
+    }
     
     Window_free(&win);
     return (0);
