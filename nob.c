@@ -33,6 +33,9 @@ const char *source_files[] = {
     ENGIN_DIR"cell_auto.c",
     ENGIN_DIR"editor.c",
     SRC_DIR"main.c",
+    SRC_DIR"lib_impl.c",
+    SRC_DIR"draw.c",
+    SRC_DIR"ui_input.c"
 };
 const char *engin_source_files[] = {
     ENGIN_DIR"cell_auto.c",
@@ -44,15 +47,16 @@ char *dir_name_ext(const String_View file_name, const String_View dir, const Str
 {
     assert(ext.data[0] == '.');
     
-    char buffer[1024] = {0};
-    strncat(buffer, dir.data, dir.count);
-    strcat(buffer, "/");
-    strncat(buffer, file_name.data, file_name.count);
-    strncat(buffer, ext.data, ext.count);
+    String_Builder buffer = {0};
 
-    return strdup(buffer);
+    sb_append_buf(&buffer, dir.data, dir.count);
+    sb_append_cstr(&buffer, "/");
+    sb_append_buf(&buffer, file_name.data, file_name.count);
+    sb_append_buf(&buffer, ext.data, ext.count);
+    sb_append_null(&buffer);
+
+    return buffer.items;
 }
-
 char *get_name_cxx_to_o(const char *file_cxx)
 {
     String_View file_name_c = sv_from_cstr(path_name(file_cxx));
@@ -126,7 +130,6 @@ Arg_Shell_List arg_parse(int argc, char **argv)
         else if (!memlitcmp(argv[i], "engin_release"))
         {
             cmd_append(&res.additionnal_compilation_flags, "-O2");
-
             res.target = engin_release;
         }
         else if (strlen(argv[i]) >= 2 && 0 == memcmp(argv[i], "-D", 2))

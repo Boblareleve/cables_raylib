@@ -2,6 +2,7 @@
 #define ENGIN_H
 
 
+#include <ctype.h>
 #include <stdlib.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -39,8 +40,27 @@ typedef struct Pos
     };
 } Pos;
 DA_TYPEDEF_ARRAY(Pos);
+typedef struct iRectangle
+{
+    union {
+        struct {
+            int x;
+            int y;
+        };
+        Pos start;
+    };
+    union {
+        struct {
+            int width;
+            int height;
+        };
+        Pos dims;
+    };
+} iRectangle;
 
 
+
+#define Null_Struct(T, value) (0 == memcmp(&value, &(T){0}, sizeof(value)))
 
 #define POS_Y_MASK 0b00001111
 #define POS_Y_UNIT 0b00000001
@@ -143,7 +163,9 @@ typedef enum
     u_not_gate_oo       = 0b01011100,
     r_not_gate_oo       = 0b01011101,
     d_not_gate_oo       = 0b01011110,
-    l_not_gate_oo       = 0b01011111
+    l_not_gate_oo       = 0b01011111,
+
+    state_trap = 0xff
 } State;
 
 // 000 00 00
@@ -160,12 +182,12 @@ typedef enum
 
 typedef enum state_type
 {
-    ty_empty        = TYPE_MASK & empty,            // 0b00000000,
-    ty_cable_off    = TYPE_MASK & cable_off,        // 0b00010000,
-    ty_cable_on     = TYPE_MASK & cable_on,         // 0b00010000,
-    ty_transistor   = TYPE_MASK & u_transistor_off, // 0b00100000,
-    ty_bridge       = TYPE_MASK & bridge,           // 0b00110000,
-    ty_not_gate     = TYPE_MASK & u_not_gate,       // 0b01000000,
+    ty_empty        = TYPE_MASK & empty,
+    ty_cable_off    = TYPE_MASK & cable_off,
+    ty_cable_on     = TYPE_MASK & cable_on,
+    ty_transistor   = TYPE_MASK & u_transistor_off,
+    ty_bridge       = TYPE_MASK & bridge,
+    ty_not_gate     = TYPE_MASK & u_not_gate,
 } state_type;
 typedef enum state_variant
 {
@@ -175,6 +197,7 @@ typedef enum state_variant
 } state_variant;
 typedef enum Direction
 {
+    none    = -1,
     up      = 0b00,
     right   = 0b01,
     down    = 0b10,
@@ -187,6 +210,20 @@ typedef struct
     Pos pos;
     Chunk *data;
 } Item_chunks;
+#define UNWRAPE_ITEM_CHUNK(item) (Chunk*)({\
+    Item_chunks *_tmp = (item);\
+    _tmp ? _tmp->data : NULL; \
+})
+
+#define SWAP(a, b) do { __auto_type SWAP_tmp = a; a = b; b = SWAP_tmp; } while (0)
+
+
+// from nob.h (thanks rexim)
+#define UNUSED(value) (void)(value)
+#define TODO(message) do { fprintf(stderr, "%s:%d: TODO: %s\n", __FILE__, __LINE__, message); abort(); } while(0)
+#define UNREACHABLE(message) do { fprintf(stderr, "%s:%d: UNREACHABLE: %s\n", __FILE__, __LINE__, message); abort(); } while(0)
+
+
 
 extern void Chunk_print(const Chunk*);
 __attribute_maybe_unused__ static void Item_chunks_print(const Item_chunks value)
@@ -230,21 +267,32 @@ void World_tick(World *obj);
 void Chunk_print(const Chunk *obj);
 // void World_basic_print(const World *obj, bool more);
 
-void World_set_cell(World *obj, Pos pos_world, Pos_Chunk pos_chunk, State value);
-void Chunk_set_cell(Chunk *obj, Pos_Chunk pos, State value);
+bool World_set_cell(World *obj, Pos pos_world, Pos_Chunk pos_chunk, State value);
+bool Chunk_set_cell(Chunk *obj, Pos_Chunk pos, State value);
 Chunk *add_Chunk(World *parent, Pos pos);
 bool erase_Chunk(Chunk *obj);
 bool erase_Chunk_pos(World *parent, Pos pos);
 void World_free(World *obj);
 
+Pos_Globale Pos_to_Pos_Globale(Pos pos);
 
 
+char *load_World(const char *file, World *res);
+char *save_World(const World *obj, const char *file_name);
 
-ERR_TYPEDEF(World, char);
-err_World_char load_World(const char *file);
-char *save_World(World *obj, const char *file);
+#define PATTERN_DEFAULT_DESCRIPTION "no description"
 
-void save_patern(const World *obj, const char *file, const char *head_msg, Pos_Globale pos1, Pos_Globale pos2);
-void add_patern(World *obj, Pos_Globale pos, const char *file);
+bool add_pattern(World *obj, Pos pos, const Strv pattern, Strb *res_msg);
+bool add_pattern_file(World *obj, Pos pos, const char *file, Strb *res_msg);
+char *save_pattern(const World *obj, Strb *res, const char *head_msg, Pos pos1, Pos pos2);
+char *save_pattern_file(const World *obj, const char *file, const char *head_msg, Pos pos1, Pos pos2);
+
+typedef struct Pattern_header
+{
+    int64_t width;
+    int64_t height;
+    Strv msg;
+} Pattern_header;
+Pattern_header get_pattern_header(Strv pattern_string);
 
 #endif /* ENGIN_H */

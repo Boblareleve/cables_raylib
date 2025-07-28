@@ -55,7 +55,17 @@ static_assert(down == __OPPOSITE_DIR(up), "down -> up");
 static_assert(left == __OPPOSITE_DIR(right), "left -> right");
 static_assert(right == __OPPOSITE_DIR(left), "right -> left");
 
-
+Pos_Globale Pos_to_Pos_Globale(Pos pos)
+{
+    return (Pos_Globale){
+        .chunk = (Pos){
+            .x = (pos.x >> 4),
+            .y = (pos.y >> 4)
+        },
+        .cell = ((pos.x & 0xf) << 4)
+              |  (pos.y & 0xf)
+    };
+}
 
 World World_make(const char *name)
 {
@@ -165,9 +175,8 @@ static Pos_Chunk mouv_in_chunk(Chunk **obj, Pos_Chunk pos, Direction dir)
     switch (dir)
     {
     case up:
-        if ((pos & POS_Y_MASK) >= H - 1)
+        if ((pos & POS_Y_MASK) == H - 1)
         {
-            // assert(0);
             *obj = (*obj)->close_chunks[up];
             return (pos & POS_X_MASK) | 0;
         }
@@ -378,8 +387,14 @@ void World_tick(World *obj)
     obj->state = !obj->state;
 }
 
+static inline bool is_connectable_cell(Cell cell)
+{
+    return ((cell & TYPE_MASK) == cable_off)
+         | ((cell & TYPE_MASK) == cable_on)
+         | ((cell & TYPE_MASK) == bridge);
+}
 
-static inline void update_cells_connections(Chunk *chunk, const Pos_Chunk pos)
+static inline bool update_cells_connections(Chunk *chunk, const Pos_Chunk pos)
 {
     if ((chunk->arr[pos] & TYPE_MASK) == cable_off
      || (chunk->arr[pos] & TYPE_MASK) == cable_on
@@ -426,17 +441,15 @@ static inline void update_cells_connections(Chunk *chunk, const Pos_Chunk pos)
         Chunk *down_chunk = chunk;
         const Pos_Chunk down_pos = mouv_in_chunk(&down_chunk, pos, down);
        
-        // if ((up_chunk->arr[up_pos] & TYPE_MASK) == bridge)
-        // {
-        //     assert(0);
-        // }
-        if ((up_chunk->arr[up_pos] & TYPE_MASK) != empty)
+        if (up_chunk && (up_chunk->arr[up_pos] & TYPE_MASK) != empty)
         {
-            if ((down_chunk->arr[down_pos] & TYPE_MASK) != empty)
+            if (down_chunk && (down_chunk->arr[down_pos] & TYPE_MASK) != empty)
             {
                 chunk->arr[pos] |= 1 << up | 1 << down;
-                up_chunk->arr[up_pos] |= 1 << down;
-                down_chunk->arr[down_pos] |= 1 << up;
+                if (is_connectable_cell(up_chunk->arr[up_pos]))
+                    up_chunk->arr[up_pos] |= 1 << down;
+                if (is_connectable_cell(down_chunk->arr[down_pos]))
+                    down_chunk->arr[down_pos] |= 1 << up;
             }
             
             /* else if ((up_chunk->arr[up_pos] & TYPE_MASK) != bridge
@@ -454,13 +467,15 @@ static inline void update_cells_connections(Chunk *chunk, const Pos_Chunk pos)
         const Pos_Chunk left_pos = mouv_in_chunk(&left_chunk, pos, left);
         Chunk *right_chunk = chunk;
         const Pos_Chunk right_pos = mouv_in_chunk(&right_chunk, pos, right);
-        if (((right_chunk->arr[right_pos] & TYPE_MASK) != empty))
+        if (right_chunk && ((right_chunk->arr[right_pos] & TYPE_MASK) != empty))
         {
-            if ((left_chunk->arr[left_pos] & TYPE_MASK) != empty)
+            if (left_chunk && (left_chunk->arr[left_pos] & TYPE_MASK) != empty)
             {
-                chunk->arr[pos] |= 1 << left | 1 << right;
-                left_chunk->arr[left_pos]   |= 1 << right;
-                right_chunk->arr[right_pos] |= 1 << left;
+                chunk->arr[pos] |= (1 << left) | (1 << right);
+                if (is_connectable_cell(left_chunk->arr[left_pos]))
+                    left_chunk->arr[left_pos] |= (1 << right);
+                if (is_connectable_cell(right_chunk->arr[right_pos]))
+                    right_chunk->arr[right_pos] |= (1 << left);
             }
             
             //
@@ -479,6 +494,8 @@ static inline void update_cells_connections(Chunk *chunk, const Pos_Chunk pos)
             }
         } */
     }
+
+    return true;
 }
 
 /* static inline void update_cells_connections(Chunk *chunk, Pos_Chunk pos, Cell old_value, Cell value)
@@ -593,10 +610,10 @@ void Chunk_delete_cell(Chunk *chunk, Pos_Chunk pos)
     chunk->arr[pos] = empty;
 }
 
-void Chunk_set_cell(Chunk *obj, Pos_Chunk pos, State value)
+bool Chunk_set_cell(Chunk *obj, Pos_Chunk pos, State value)
 {
     if (value == obj->arr[pos])
-        return ;
+        return true;
     
     // Cell old_value = obj->arr[pos];
     Chunk_delete_cell(obj, pos);
@@ -614,21 +631,22 @@ void Chunk_set_cell(Chunk *obj, Pos_Chunk pos, State value)
     else if ((value & TYPE_MASK) == cable_on)
         da_push(&obj->cables, pos);
     
-    update_cells_connections(obj, pos /* , old_value */);
+    return update_cells_connections(obj, pos /* , old_value */);
 }
 
-void World_set_cell(World *obj, Pos pos_world, Pos_Chunk pos_chunk, State value)
+bool World_set_cell(World *obj, Pos pos_world, Pos_Chunk pos_chunk, State value)
 {
     Item_chunks *item_chunk = set_Item_chunks_get(&obj->chunks, (Item_chunks){ .pos = pos_world });
-    if (item_chunk == NULL && value == empty)
-        return ;
+    if (item_chunk == NULL && (value & TYPE_MASK) == empty)
+        return true;
+    
     Chunk *chunk = NULL;
     if (item_chunk == NULL)
         chunk = add_Chunk(obj, pos_world);
     else chunk = item_chunk->data;
     assert(chunk);
 
-    Chunk_set_cell(chunk, pos_chunk, value);
+    return Chunk_set_cell(chunk, pos_chunk, value);
 }
 
 void Chunk_free(Chunk *obj)

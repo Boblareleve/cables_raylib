@@ -33,174 +33,306 @@ const char Otable[] = {
 
 
 
-/* void save_patern(const World *obj, const char *file, const char *head_msg, Pos_Globale pos1, Pos_Globale pos2)
+
+static inline Cell convert_chars_to_Cell(char code[2])
 {
-    int width  = abs(pos2.world.x - pos1.world.x) 
-               + abs((pos2.chunk & POS_X_MASK) - (pos1.chunk & POS_X_MASK));
-    int height = abs(pos2.world.y - pos1.world.y)
-               + abs(((pos2.chunk & POS_Y_MASK) >> 4) - ((pos1.chunk & POS_Y_MASK) >> 4));
-    // Pos_Globale size = {
-    //     pos2.l - pos1.l, pos2.c - pos1.c
-    // };
+    if (0) printf("chars to cell: '%c%c'\n", code[0], code[1]);
 
-    int fd = open(file, O_WRONLY | O_CREAT | O_TRUNC);
-    char buffer[16];
-    write(fd, head_msg, strlen(head_msg));
-    write(fd, " :", 2);
-    write(fd, buffer, snprintf(buffer, 15, "%i", height));
-    write(fd, ",", 1);
-    write(fd, buffer, snprintf(buffer, 15, "%i", width));
-    write(fd, "\n", 1);
-    // file_patern << head_msg << " :" << size.l << "," << size.c << "\n";
-    
-
-    Chunk *tmp = set_Chunk_get_(&obj->chunks, (Chunk){ .pos = pos1.world });
-
-    for (int cy = pos1.world.y; cy < pos2.world.y; cy++)
+    Direction dir = up;
+    switch (code[1])
     {
-        for (int cx = pos1.world.x; cx < pos2.world.x; cx++)
+    case 'u': dir = up;    break;
+    case 'l': dir = left;  break;
+    case 'd': dir = down;  break;
+    case 'r': dir = right; break;
+    case ' ': dir = none;  break;
+    case 'b': dir = none;  break;
+    default:
+        return state_trap;
+    }
+
+    switch (code[0])
+    {
+    case ' ': if (dir == none) return empty; break;
+    case 'x': if (dir == none) return cable_off; break;                 
+    case 'X': if (dir == none) return cable_on; break;
+    case 't': if (dir != none) return ty_transistor | var_off | dir; break;
+    case 'T': if (dir != none) return ty_transistor | var_o   | dir; break;
+    case 'O': if (dir != none) return ty_transistor | var_on  | dir; break;
+    case 'n': if (dir != none) return ty_not_gate   | var_off | dir; break;
+    case 'N': if (dir != none) return ty_not_gate   | var_on  | dir; break;
+    case 'b':
+        if (code[1] == 'b' || code[1] == ' ') 
+            return bridge;
+        break;
+    default:
+    }
+    return state_trap;
+}
+static inline uint16_t convert_Cell_to_chars(Cell state, bool tick_state)
+{
+    static const char dir_to_letter[4] = { 'u', 'r', 'd', 'l' };
+
+    if ((state & TYPE_MASK) == ty_empty)    
+        return *(uint16_t*)"  ";
+    else if ((state & TYPE_MASK) == ty_cable_off)
+        return *(uint16_t*)"x ";
+    else if ((state & TYPE_MASK) == ty_cable_on)
+        return *(uint16_t*)"X ";
+    else if ((state & TYPE_MASK) == ty_transistor)
+    {
+        if ((state & VARIANT_MASK) == var_off)
+            return *(uint16_t*)(char[2]){'t', dir_to_letter[state & DIRECTION_MASK]};
+        else if ((state & VARIANT_MASK) == var_o)
+            return *(uint16_t*)(char[2]){'T', dir_to_letter[state & DIRECTION_MASK]};
+        else if ((state & VARIANT_MASK) == var_on)
+            return *(uint16_t*)(char[2]){'O', dir_to_letter[state & DIRECTION_MASK]};
+        else UNREACHABLE("unvalide state transistor (mickmak with not gate ?)");
+    }
+    else if ((state & TYPE_MASK) == ty_not_gate)
+        return *(uint16_t*)(char[2]){
+            ((state >> (tick_state + 2)) & 1) ? 'n' : 'N', 
+            dir_to_letter[state & DIRECTION_MASK]
+        };
+    else if ((state & TYPE_MASK) == ty_bridge)
+        return *(uint16_t*)"b ";
+    
+    return *(uint16_t*)(char[2]){ '\0', '\0' };
+}
+
+char *save_pattern_file(const World *obj, const char *file, const char *head_msg, Pos pos1, Pos pos2)
+{
+    FILE *file_handel = fopen(file, "w");
+
+    Strb text = {0};
+    char *error = save_pattern(obj, &text, head_msg, pos1, pos2);
+
+    if (fwrite(text.arr, sizeof(char), text.size, file_handel) != (size_t)text.size)
+        error = error ? error : "[ERROR] didn't write all data";
+    if (fclose(file_handel))
+        error = error ? error : "[WARNING] file not closed";
+    
+    Strb_free(text);
+    return error;
+}
+char *save_pattern(const World *obj, Strb *res, const char *head_msg, Pos pos1, Pos pos2)
+{
+    Pos start = {
+        .x = pos1.x < pos2.x ? pos1.x : pos2.x,
+        .y = pos1.y < pos2.y ? pos1.y : pos2.y
+    };
+    Pos end = {
+        .x = pos1.x > pos2.x ? pos1.x : pos2.x,
+        .y = pos1.y > pos2.y ? pos1.y : pos2.y
+    };
+    int width = end.x - start.x + 1;
+    int height = end.y - start.y + 1;
+
+    printf("save box: x1%i y1%i x2%i y2%i\n", start.x, start.y, end.x, end.y);
+
+
+    Strb_cat(res, head_msg);
+    Strb_ncat(res, " :", 2);
+    Strb_catf(res, "%u", width);
+    Strb_cat_char(res, ',');
+    Strb_catf(res, "%u", height);
+    Strb_cat_char(res, '\n');
+    
+    Pos_Globale gpos = Pos_to_Pos_Globale((Pos){ start.x, end.y });
+    Chunk *chunk = UNWRAPE_ITEM_CHUNK(set_Item_chunks_get(
+        &obj->chunks, 
+        (Item_chunks){ .pos = gpos.chunk }
+    ));
+    
+    for (int cy = end.y; cy >= start.y; cy--)
+    {
+        for (int cx = start.x; cx <= end.x; cx++)
         {
-            if (tmp->pos.packed != ((uint64_t)cy | ((uint64_t)cx << 32l)))
-                tmp = set_Chunk_get_(&obj->chunks, (Chunk){ .pos = { .x = cx, .y = cy } });
-            int local_pos = 0;    
-            for (int ly = 0; ly < H; ly++)
+            printf("cx, cy = %i, %i\n", cx, cy);
+            gpos = Pos_to_Pos_Globale((Pos){ cx, cy });
+            if (chunk->pos.packed != gpos.chunk.packed)
             {
-                for (int lx = 0; lx < W; lx++)
+                chunk = UNWRAPE_ITEM_CHUNK(set_Item_chunks_get(
+                    &obj->chunks, 
+                    (Item_chunks){ .pos = gpos.chunk }
+                ));
+            }
+
+            if (chunk == NULL)
+                Strb_ncat(res, "  ,", 3);
+            else
+            {
+                uint16_t chars = convert_Cell_to_chars(chunk->arr[gpos.cell], obj->state);
+                if (chars == 0)
+                    Strb_ncat(res, "  ,", 3);    
+                else
                 {
-                    if (tmp == NULL)
-                        write(fd, "  ,", 3);// << "  " << ",";
-                    else 
-                    {
-                        // file_patern << Gtable[tmp->arr[cy][cx]] << Otable[tmp->arr[cy][cx]] << ",";
-                        write(fd, &Gtable[tmp->arr[local_pos]], 1);
-                        write(fd, &Otable[tmp->arr[local_pos]], 1);
-                        write(fd, ",", 1);
-                    }
-                    local_pos += POS_X_UNIT;
+                    Strb_ncat(res, (char*)&chars, 2);
+                    Strb_cat_char(res, ',');
                 }
-                local_pos &= POS_Y_MASK; // <- zreos x
-                local_pos++;
-                
-                // if last chunk
-                if (cx + 1 == pos2.world.x)
-                    write(fd, "\n", 1);
-                // file_patern << "\n";
             }
         }
+        bool is_CRLF = false;
+        Strb_ncat(res, &"\r\n"[!is_CRLF], 1 + is_CRLF);
     }
-    if (close(fd))
-        exit(-1);
+
+    if (DEBUG_VALUE)
+    {
+        printf("save pattern: \"");
+        Str_print(*res);
+        printf("\"\n");
+    }
+    return NULL;
 }
- */
 
 
-/* Strb read_line(int fd, int *it)
+Pattern_header pattern_parser_header(Strv *pattern, bool *is_CRLF)
 {
-    const int block_size = 512;
-    Strb buffer = Strb_make(block_size);
-    *it = 0;
-    do {
-        Strb_read_max(&buffer, fd);
-        while (*it < buffer.size && buffer.arr[*it] != '\n')
-            (*it)++;
+    Strv header = Strv_c_substr(pattern, '\n');
 
-        if (*it == buffer.size)
-        {
-            buffer.capacity += block_size;
-            buffer.arr = realloc(buffer.arr, buffer.capacity);
-        }
-    } while (*it == buffer.size);
+    if (Str_end(header) == '\r')
+    {
+        *is_CRLF = true;
+        header.size--;
+    }
+    assert(pattern->arr[0] == '\n');
+    *pattern = Strv_stride(*pattern, 1);
+
+    Pattern_header res = {
+        .msg = Strv_c_substr(&header, ':')
+    };
+    if (header.size == 0)
+    {
+        if (DEBUG_VALUE) printf("[ERROR] no ':' after msg\n");
+        return (Pattern_header){0};
+    }
+    // if no description state it bc otherwise it will be interpreted as an error
+    if (res.msg.size <= 0) 
+        res.msg = Strv_cstr(PATTERN_DEFAULT_DESCRIPTION);
+
+    header = Strv_stride(header, 1);
     
-    return buffer;
-}
- */
-
-/* void add_patern(World *obj, Pos_Globale pos, const char *file)
-{
-    int fd = open(file, O_RDONLY);
-
-    if (fd == -1)
+    if (header.size == 0)
     {
-        printf("error opening file, exit\n");
-        return ;
-    }
-
-    Strb buffer = Strb_make(256);
-    Strb_read_max(fd, &buffer);
-
-    int end_header = 0;
-    do {
-        while (buffer.arr[end_header] != '\n' 
-            && buffer.arr[end_header] != '\r'
-            && end_header < buffer.size)
-            end_header++;
-
-        if (end_header == buffer.size)
-            Strb_read_block(fd, &buffer, 256);
-        else end_header++;
-    } while (end_header == buffer.size);
-
-    int nbLinePatern = 0;
-    int nbColonePatern = 0;
-    {
-        Strv header = Strv_substr(buffer.self, 0, end_header);
-        
-        int i = 0;
-        while (header.arr[i] != ':' && i < header.size)
-        i++;
-        if (header.size == i)
-        {
-            printf("[ERROR] no ':' after msg\n");
-            Strb_free(buffer);
-            return ;
-        }
-        i++;
-        
-        nbLinePatern = atoi(&buffer.arr[i]);
-        while (buffer.arr[i] != ',' && i < buffer.size)
-        i++;
-        if (i == buffer.size)
-        {
-            printf("[ERROR] no ',' between line and coloms numbers\n");
-            Strb_free(buffer);
-            return ;
-        }
-        i++;
-        nbColonePatern = atoi(&buffer.arr[i]);
+        if (DEBUG_VALUE) printf("[ERROR] no ',' between line and coloms numbers\n");
+        return (Pattern_header){0};
     }
     
-    const int line_character_count = nbColonePatern * 3 + 2;// '\n'
-    for (int y = 0; y < nbLinePatern; y++)
-    {
-        while (buffer.capacity - end_header + y * line_character_count < line_character_count)
-            Strb_read_block(fd, &buffer, 256);
-        
-        Strv line = Strv_substr(
-            buffer.self, 
-            end_header + y * line_character_count, 
-            line_character_count - 2
-        );
+    while (header.size > 0 && isspace(header.arr[0]))
+        header = Strv_stride(header, 1);
 
-        // getline(file_patern, buffer);
+    res.width = Str_atoll(header, &header);
+    if (res.width == INT64_MAX)
+    {
+        if (DEBUG_VALUE) printf("[ERROR] no fail to parse numbre of colone\n");
+        return (Pattern_header){0};
+    }
+
+    while (header.size && isspace(header.arr[0]))
+        header = Strv_stride(header, 1);
+    if (header.arr[0] != ',')
+    {
+        if (DEBUG_VALUE) printf("[ERROR] missing ',' between width and height\n");
+        return (Pattern_header){0};
+    }
+    do 
+        header = Strv_stride(header, 1);
+    while (header.size > 0 && isspace(header.arr[0]));
+    
+    res.height = Str_atoll(header, &header);
+    if (res.height == INT64_MAX)
+    {
+        if (DEBUG_VALUE) printf("[ERROR] no fail to parse numbre of lignes\n");
+        return (Pattern_header){0};
+    }
+    while (header.size > 0 && isspace(header.arr[0]))
+        header = Strv_stride(header, 1);
+    if (header.size != 0)
+    {
+        if (DEBUG_VALUE) printf("[ERROR] expected a new ligne\n");
+        return (Pattern_header){0};
+    }
+    return res;
+}
+    
+// == {0} on error
+Pattern_header get_pattern_header(Strv pattern_string)
+{
+    bool dummy = false;
+    if (Null_Struct(Strv, pattern_string))
+        return (Pattern_header){0};
+
+    return pattern_parser_header(&pattern_string, &dummy);
+}
+
+bool add_pattern(World *obj, Pos pos, Strv pattern, Strb *res_msg)
+{
+    if (DEBUG_VALUE)
+    {
+        printf("add pattern at %i,%i: \"", pos.x, pos.y);
+        Str_print(pattern);
+        printf("\"\n");
+    }
+    if (Null_Struct(Strv, pattern))
+    {
+        if (DEBUG_VALUE) printf("[ERROR] empty input\n");
+        return false;
+    }
+
+    bool is_CRLF = false; // \r\n or \n
+    bool function_success = true;
+
+    Pattern_header header = pattern_parser_header(&pattern, &is_CRLF);
+    if (Null_Struct(Pattern_header, header))
+        return false;
+    
+    if (pattern.size < (header.height - 1) * (3 * header.width + 1 + is_CRLF) + 3 * header.width)
+    {
+        if (DEBUG_VALUE) printf("[ERROR] body of the pattern too small\n");
+        return false;
+    }
+
+    // const int line_character_count = nb_colone_patern * 3 + 2;// '\n'
+    for (int y = header.height - 1; y >= 0; y--)
+    {
+        Strv line = Strv_c_substr(&pattern, is_CRLF ? '\r' : '\n');
+        pattern = Strv_stride(pattern, 1 + is_CRLF);
 
         int t = 0;
-        for (int x = 0; x < nbColonePatern; x++)
+        for (int x = 0; t < line.size && x < header.width; x++)
         {
-            World_set_cell(
-                obj,
-                (Pos){0},   // CH_POS(pos.l + y, pos.c + k), 
-                (x << 4) | y,  // (pos.l + y)%H, (pos.c + k)%W, 
-                convert(&line.arr[t])
+            Pos_Globale gpos = Pos_to_Pos_Globale((Pos){x + pos.x, y + pos.y});
+
+            // success if all set_cell success
+            function_success &= World_set_cell(
+                obj, 
+                gpos.chunk, 
+                gpos.cell, 
+                convert_chars_to_Cell(&line.arr[t])
             );
-            t += 2;
-            assert(line.arr[t] == ',');
-            t++;
+            t += 3;
         }
     }
+    if (res_msg) *res_msg = Strb_Str(header.msg);
+
+    
+    return function_success;
 }
- */
-
-
+bool add_pattern_file(World *obj, Pos pos, const char *file, Strb *res_msg)
+{
+    Strb data_raw_bytes = err_attrib(Strb_read_all(file), 
+        err, return false;
+    );
+    
+    if (!add_pattern(obj, pos, data_raw_bytes.self, res_msg)) 
+    {
+        Strb_free(data_raw_bytes);
+        return false;
+    }
+    
+    Strb_free(data_raw_bytes);
+    return true;
+}
 
 typedef struct Header {
     union {
@@ -226,7 +358,7 @@ typedef struct Chunk_Write {
     Cell_data array[W*H];
 } Chunk_Write;
 
-char *save_World(World *obj, const char *file_name)
+char *save_World(const World *obj, const char *file_name)
 {
     Strb to_write = {0};
 
@@ -249,7 +381,7 @@ char *save_World(World *obj, const char *file_name)
 
         for (int cell_pos = 0; cell_pos < W*H; cell_pos++)
         {
-            if (item->data->arr[cell_pos] != empty)
+            if ((item->data->arr[cell_pos] & TYPE_MASK) != empty)
             {
                 assert(chunk_data->size < W*H);
                 chunk_data->array[chunk_data->size++] = (Cell_data){
@@ -259,87 +391,84 @@ char *save_World(World *obj, const char *file_name)
             }
         }
 
-        // for 4 bytes alignement
+        // for four bytes alignement
         if (chunk_data->size % 2)
             chunk_data->array[chunk_data->size] = (Cell_data){0};
         
         size_t size_to_write = sizeof(chunk_data->pos)
                              + sizeof(chunk_data->size)
-                             + sizeof(chunk_data->array[0]) * chunk_data->size
-                             + sizeof(chunk_data->array[0]) * (chunk_data->size % 2);
+                             + sizeof(chunk_data->array[0])
+                             * (chunk_data->size + chunk_data->size % 2);
         assert(to_write.size + (ssize_t)size_to_write < to_write.capacity);
         to_write.size += size_to_write;
     }
 
     
-    if (Str_write_all(Strv_cstr((char*)file_name), to_write.self))
+    if (Str_write_all(file_name, to_write.self))
     {
         Strb_free(to_write);
-        return "[ERROR] closing the file";
+        return "[ERROR] save_World: fileio";
     }
     Strb_free(to_write);
     return NULL;
 }
 
-
-
-ERR_TYPEDEF(Header, char);
-err_Header_char read_Header(Strv *raw_bytes)
+char *read_Header(Strv *raw_bytes, Header *res)
 {
-    err_Header_char res = {0};
-
-    if (raw_bytes->size < (ssize_t)sizeof(res.data))
-        return (err_Header_char){ .error = "[ERROR] failed to read header" };
+    if (raw_bytes->size < (ssize_t)sizeof(*res))
+        return "[ERROR] file shorter than the header";
     
-    res.data = *(Header*)raw_bytes->arr;
-    *raw_bytes = Strv_stride(*raw_bytes, sizeof(res.data));
+    *res = *(Header*)raw_bytes->arr;
+    *raw_bytes = Strv_stride(*raw_bytes, sizeof(*res));
 
-    if (res.data.packted_magic != FILE_MAGIC_PACKED)
-        return (err_Header_char){ .error = "[ERROR] wrong magic" };
-    if (res.data.version != 1)
-        return (err_Header_char){ .error = "[ERROR] version unsupported" };
-    if (res.data.chunk_count < 0)
-        return (err_Header_char){ .error = "[ERROR] corrupt file \"negative chunk count\"" };
-    if (res.data.chunk_width != W || res.data.chunk_height != H)
-        return (err_Header_char){ .error = "[ERROR] corrupt file \"unvalid width or/and height\"" };
+    if (res->packted_magic != FILE_MAGIC_PACKED)
+        return "[ERROR] wrong magic";
+    if (res->version != 1)
+        return "[ERROR] version unsupported";
+    if (res->chunk_count < 0)
+        return "[ERROR] corrupt file \"negative chunk count\"";
+    if (res->chunk_width != W || res->chunk_height != H)
+        return "[ERROR] corrupt file \"unvalid width or/and height\"";
 
-    return res;
+    return NULL;
 }
 
-
-err_World_char load_World(const char *file)
+char *load_World(const char *file, World *res)
 {
-    Strb data_raw_bytes = Strb_read_all(Strv_cstr((char*)file));
+    Strb data_raw_bytes = err_attrib(Strb_read_all(file), 
+        err, return "[ERROR] can't read file";
+    );
 
-    Strv raw_bytes = Strv_stride(data_raw_bytes, 0);
-
-    if (!memcmp(&raw_bytes, &(Strb){0}, (ssize_t)sizeof(raw_bytes)))
-        return (err_World_char){ .error = "[ERROR] reading the file" };
+    Strv raw_bytes = data_raw_bytes.self;
     
-    Header head = err_follow(read_Header(&raw_bytes), err_World_char);
+    Header head = {0};
+    char *err_head = read_Header(&raw_bytes, &head);
+    if (err_head)
+    {
+        Strb_free(data_raw_bytes);
+        return err_head;
+    }
     
-    World res = World_make(file);
-
-
+    *res = World_make(file);
     for (int i = 0; i < head.chunk_count; i++)
     {
         if (raw_bytes.size < (ssize_t)(sizeof(Pos) + sizeof(int)))
         {
             Strb_free(data_raw_bytes);
-            return (err_World_char){ 
-                .data = res,
-                .error = "[WARNING] corrupt file \"can't read a chunk (blocked at .pos .cell_count)\""
-            };
+            return "[WARNING] corrupt file \"can't read a chunk (blocked at .pos .cell_count)\"";
         }
-        Pos tmp_pos = *(Pos*)raw_bytes.arr;
-        raw_bytes = Strv_stride(raw_bytes, sizeof(Pos));
+        Pos tmp_pos = {0};
+        tmp_pos.x = *(int*)raw_bytes.arr;
+        raw_bytes = Strv_stride(raw_bytes, sizeof(tmp_pos.x));
+        tmp_pos.y = *(int*)raw_bytes.arr;
+        raw_bytes = Strv_stride(raw_bytes, sizeof(tmp_pos.y));
         
         int cell_count = *(int*)raw_bytes.arr;
         raw_bytes = Strv_stride(raw_bytes, sizeof(int));
 
         if (cell_count > 0)
         {
-            Chunk *chunk = add_Chunk(&res, tmp_pos);
+            Chunk *chunk = add_Chunk(res, tmp_pos);
             
             for (int i = 0; i < cell_count; i++)
             {
@@ -348,38 +477,28 @@ err_World_char load_World(const char *file)
                     Strb_free(data_raw_bytes);
                     if (!erase_Chunk(chunk))
                     {
-                        World_free(&res);
-                        return (err_World_char){ .error = "[ERROR] corrupt file \"can't read a chunk (blocked at ?/? cell)\" while failing, fail to erase '...' chunk" };
+                        World_free(res);
+                        return "[ERROR] corrupt file \"can't read a chunk (blocked at ?/? cell)\" while failing, fail to erase '...' chunk";
                     }
-                    return (err_World_char){
-                        .error = "[WARNING] corrupt file \"can't read a chunk (blocked at ?/? cell)\"",
-                        .data = res
-                    };
+                    return "[WARNING] corrupt file \"can't read a chunk (blocked at ?/? cell)\"";
                 }
                 Cell_data cell_data = *(Cell_data*)raw_bytes.arr;
                 raw_bytes = Strv_stride(raw_bytes, sizeof(Cell_data));
                 
                 Chunk_set_cell(chunk, cell_data.pos, cell_data.value);
             }
-            // if padding
+            // padding
             if (cell_count % 2)
             {
                 if (raw_bytes.size < (ssize_t)sizeof(Cell_data))
                 {
                     Strb_free(data_raw_bytes);
-                    return (err_World_char){
-                        .error = "[WARNING] corrupt file \"missing padding\"",
-                        .data = res
-                    };
+                    return "[WARNING] corrupt file \"missing padding\"";
                 }
-    
                 raw_bytes = Strv_stride(raw_bytes, sizeof(Cell_data) * (cell_count % 2));
             }
         }
-    
     }
-
     Strb_free(data_raw_bytes);
-
-    return (err_World_char){ .data = res };
+    return NULL;
 }
