@@ -97,22 +97,62 @@ typedef struct Texs {
 
 
 
+// incusive
+#define GET_WIDTH(pos1, pos2) (abs(pos1.x - pos2.x) + 1)
+// incusive
+#define GET_HEIGHT(pos1, pos2) (abs(pos1.y - pos2.y) + 1)
+#define GET_MIN_WIDTH_HEIGHT(pos1, pos2)\
+    MIN(GET_WIDTH(pos1, pos2), GET_HEIGHT(pos1, pos2))
+
+#define SELECTION_COLOR (Color){ 0, 121, 241, 32 }
+#define SELECTION_COLOR_OUTLINE (Color){ 0, 121, 241, 172 }
+#define PASTE_SELECTION_COLOR (Color){ 230, 41, 55, 32 }
+#define PASTE_SELECTION_COLOR_OUTLINE (Color){ 230, 41, 55, 128 }
+#define MOUV_PADDING (1./4.)
 
 typedef struct Select_ui
 {
     Pos start;
     Pos end;
 
+    
     Vector2 current_start;
     Vector2 current_end;
     
+    enum Extend_enable {
+        extend_sides_none = 0,
+        extend_sides_vertical = 0b01,
+        extend_sides_horizontal = 0b10,
+        extend_sides_full = 0b11,
+    } mode_extend_sides;
+    struct Rounded_rectangle {
+        Rectangle rec;
+        float roundness;
+        int segments;
+    } sides_vertices[4]; // up right down left
     
+    enum Extend_resize {
+        extend_resize_up = up,
+        extend_resize_right = right,
+        extend_resize_down= down,
+        extend_resize_left = left,
+        extend_resize_none,
+    } sides_resize;
+    
+    /* enum {
+        extend_corner_none = 0,
+        extend_corner_full = 1,
+    } mode_extend_corner;
+    Vector2 corners_vertices[4][3]; // up-left up-right down-right down-left
+     */
+
     enum {
         selection_off,
         selection_waiting_to_select,
         selection_selecting,
         selection_seleted,
-        selection_paste_preview
+        selection_paste_preview,
+        selection_resizing,
     } mode;
 
     Strb clipboard;
@@ -185,7 +225,10 @@ static inline void sort_Pos_Globale(Pos *pos1, Pos *pos2)
     if (pos1->y < pos2->y)
         SWAP(pos1->y, pos2->y);
 }
-
+static inline void Rectangle_print(Rectangle rec)
+{
+    printf("x%f y%f w%f h%f", rec.x, rec.y, rec.width, rec.height);
+}
 
 /* function prototypes */
 
@@ -200,4 +243,14 @@ Ui Ui_make(Camera2D cam);
 void Ui_free(Ui *ui);
 
 
+
+
+
+
+
+
+
+
 #endif /* MAIN_H */
+
+

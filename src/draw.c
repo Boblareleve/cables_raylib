@@ -118,8 +118,8 @@ static inline Rectangle get_from_pos_to_pos(float cell_size, Pos start, Pos end)
     if (end.y < start.y)
         SWAP(end.y, start.y);
     
-    const int width =  abs(end.x - start.x) + 1;
-    const int height = abs(end.y - start.y) + 1;
+    const int width =  GET_WIDTH(start, end);
+    const int height = GET_HEIGHT(start, end);
 
     return (Rectangle){
          start.x * W,
@@ -129,118 +129,171 @@ static inline Rectangle get_from_pos_to_pos(float cell_size, Pos start, Pos end)
     };
 }
 
+
+
+void mouv_draw(const Ui *ui, const Texs *texs, Rectangle selection_box)
+{
+    // if (ui->select.mode_extend_corner == extend_corner_full)
+    // { // draw corner
+    //     for (int i = 0; i < (ssize_t)ARRAY_LEN(ui->select.corners_vertices); i++)
+    //     {
+    //         assert(3 == (ssize_t)ARRAY_LEN(ui->select.corners_vertices[i]));
+    //         // printf("draw corner %i: %f %f ; %f %f ; %f %f\n", i, 
+    //         //     ui->select.corners_vertices[i][0].x, ui->select.corners_vertices[i][0].y,
+    //         //     ui->select.corners_vertices[i][1].x, ui->select.corners_vertices[i][1].y,
+    //         //     ui->select.corners_vertices[i][2].x, ui->select.corners_vertices[i][2].y
+    //         // );
+    //         DrawTriangleFan(
+    //             ui->select.corners_vertices[i],
+    //             (ssize_t)ARRAY_LEN(ui->select.corners_vertices[i]),
+    //             SELECTION_COLOR_OUTLINE
+    //         );
+    //     }
+    // }
+    
+    // draw sides ONLY
+    for (Direction dir = 0; dir < (ssize_t)ARRAY_LEN(ui->select.sides_vertices); dir++)
+    {
+        if (
+            ((dir == up   || dir == down ) && (ui->select.mode_extend_sides & extend_sides_horizontal))
+         || ((dir == left || dir == right) && (ui->select.mode_extend_sides & extend_sides_vertical))
+        )
+            // DrawTriangleFan(
+            //     ui->select.sides_vertices[dir],
+            //     (ssize_t)ARRAY_LEN(ui->select.sides_vertices[dir]),
+            //     SELECTION_COLOR_OUTLINE
+            // );
+            DrawRectangleRec(
+                ui->select.sides_vertices[dir].rec, 
+                SELECTION_COLOR_OUTLINE
+            );
+            // DrawRectangleRounded(
+            //     ui->select.sides_vertices[dir].rec, 
+            //     ui->select.sides_vertices[dir].roundness,
+            //     ui->select.sides_vertices[dir].segments,
+            //     SELECTION_COLOR_OUTLINE
+            // );
+    }
+}
+
+static inline void Ui_draw(const Ui *ui, const Texs *texs, const Camera2D cam)
+{
+    DrawTextF("[FPS %d]", 10, 10, 24, WHITE, GetFPS());
+    
+    StartBodyEnd(BeginMode2D(cam), EndMode2D())
+    {
+        if (ui->mode == mode_editing)
+        { // draw overed cell
+            DrawRectangleLines(
+                    ui->mouse_pos.x * W,
+                -ui->mouse_pos.y * H - H,
+                texs->cell_size,
+                texs->cell_size,
+                WHITE
+            );
+        }
+        else if (ui->mode == mode_select)
+        { // draw selection
+            if (ui->select.mode == selection_selecting
+                || ui->select.mode == selection_seleted
+            ) {
+                Rectangle selection_box = get_from_pos_to_pos(
+                    texs->cell_size,
+                    ui->select.start,
+                    ui->select.end
+                );
+                // Rectangle_print(selection_box);
+                // printf("\n\n\n");
+                DrawRectangleRec(
+                    selection_box,
+                    SELECTION_COLOR
+                );
+                DrawRectangleLinesEx(
+                    selection_box,
+                    2, 
+                    SELECTION_COLOR_OUTLINE
+                );
+                mouv_draw(ui, texs, selection_box);
+            }
+            else if (ui->select.mode == selection_paste_preview)
+            {
+                DrawRectangleRec(
+                    get_from_pos_to_pos(texs->cell_size,
+                        ui->select.start,
+                        ui->select.end
+                    ),
+                    PASTE_SELECTION_COLOR
+                );
+                DrawRectangleLinesEx(
+                    get_from_pos_to_pos(texs->cell_size,
+                        ui->select.start,
+                        ui->select.end
+                    ),
+                    2,
+                    PASTE_SELECTION_COLOR_OUTLINE
+                );
+            }
+        }
+    }
+    if (ui->mode == mode_editing)
+        draw_Texs_Cell_V(
+            texs,
+            ui->edit.current_state,
+            (Rectangle){
+                .x = 0, .y = 0,
+                .width =  8 * texs->cell_size,
+                .height = 8 * texs->cell_size,
+            }
+        );
+}
+
 void Window_draw(const Window *obj)
 {
     int draw_count = 0;
     
-    
     ClearBackground(DARKGRAY);
-    DrawTextF("[FPS %d]", 10, 10, 24, WHITE, GetFPS());
     
-    BegEnd(Mode2D,(obj->cam),())
+    StartBodyEnd(BeginMode2D(obj->cam), EndMode2D())
     {
-        {
+        const Pos_Globale lu_ws = screen_to_Pos_Globale(
+            obj->cam, 
+            (Vector2){ 0, 0 }
+        );
+        const Pos_Globale rd_ws = screen_to_Pos_Globale(
+            obj->cam, 
+            (Vector2){ GetScreenWidth(), GetScreenHeight() }
+        );
 
-            const Pos_Globale lu_ws = screen_to_Pos_Globale(
-                obj->cam, 
-                (Vector2){ 0, 0 }
-            );
-            const Pos_Globale rd_ws = screen_to_Pos_Globale(
-                obj->cam, 
-                (Vector2){ GetScreenWidth(), GetScreenHeight() }
-            );
-    
-            for (int y =  rd_ws.chunk.y;
-                        y <= lu_ws.chunk.y;
-                        y++
+        for (int y =  rd_ws.chunk.y;
+                    y <= lu_ws.chunk.y;
+                    y++
+        ) {
+            for (int x =  lu_ws.chunk.x;
+                        x <= rd_ws.chunk.x;
+                        x++
             ) {
-                for (int x =  lu_ws.chunk.x;
-                            x <= rd_ws.chunk.x;
-                            x++
-                ) {
-                    Item_chunks *chunk = set_Item_chunks_get(
-                        &obj->wrd.chunks,
-                        (Item_chunks){ .pos = (Pos){
-                            .x = x,
-                            .y = y
-                        }}
-                    );
-                    if (chunk)
-                    {
-                        Chunk_draw(obj, chunk->data);
-                        draw_count++;
-                    }
-                    if (CHUNK_POS_VALUE)
-                        DrawTextF("(%d, %d)", 
-                            x * CHUNK_WORLD_SIZE + 4,
-                            -y * CHUNK_WORLD_SIZE + 4 - CHUNK_WORLD_SIZE,
-                            4., PURPLE, x, y
-                        );
+                Item_chunks *chunk = set_Item_chunks_get(
+                    &obj->wrd.chunks,
+                    (Item_chunks){ .pos = (Pos){
+                        .x = x,
+                        .y = y
+                    }}
+                );
+                if (chunk)
+                {
+                    Chunk_draw(obj, chunk->data);
+                    draw_count++;
                 }
+                if (CHUNK_POS_VALUE)
+                    DrawTextF("(%d, %d)", 
+                        x * CHUNK_WORLD_SIZE + 4,
+                        -y * CHUNK_WORLD_SIZE + 4 - CHUNK_WORLD_SIZE,
+                        4., PURPLE, x, y
+                    );
             }
-            
-        }
-
-        if (obj->ui.mode == mode_editing)
-        { // draw overed cell
-            DrawRectangleLines(
-                 obj->ui.mouse_pos.x * W,
-                -obj->ui.mouse_pos.y * H - H,
-                obj->texs.cell_size,
-                obj->texs.cell_size,
-                WHITE
-            );
-        }
-        else if (obj->ui.mode == mode_select)
-        { // draw selection
-            if (obj->ui.select.mode == selection_selecting
-             || obj->ui.select.mode == selection_seleted
-            ) {
-                DrawRectangleRec(
-                    get_from_pos_to_pos(obj->texs.cell_size,
-                        obj->ui.select.start,
-                        obj->ui.select.end
-                    ),
-                    (Color){ 0, 121, 241, 32 }
-                );
-                DrawRectangleLinesEx(
-                    get_from_pos_to_pos(obj->texs.cell_size,
-                        obj->ui.select.start,
-                        obj->ui.select.end
-                    ),
-                    2, 
-                    (Color){ 0, 121, 241, 128 }
-                );
-            }
-            else if (obj->ui.select.mode == selection_paste_preview)
-            {
-                DrawRectangleRec(
-                    get_from_pos_to_pos(obj->texs.cell_size, 
-                        obj->ui.select.start, 
-                        obj->ui.select.end
-                    ),
-                    (Color){ 230, 41, 55, 32 }
-                );
-                DrawRectangleLinesEx(
-                    get_from_pos_to_pos(obj->texs.cell_size,
-                        obj->ui.select.start, 
-                        obj->ui.select.end
-                    ),
-                    2, 
-                    (Color){ 230, 41, 55, 128 }
-                );
-            }
-
-        }
+        }        
+    
     }
-    draw_Texs_Cell_V(
-        &obj->texs,
-        obj->ui.edit.current_state,
-        (Rectangle){
-            .x = 0, .y = 0,
-            .width =  8 * obj->texs.cell_size,
-            .height = 8 * obj->texs.cell_size,
-        }
-    );
+    Ui_draw(&obj->ui, &obj->texs, obj->cam);
 }
 

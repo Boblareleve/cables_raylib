@@ -44,6 +44,29 @@ void camera_mouvement_input(Window *win)
         win->cam.zoom = min_zoom;
 }
 
+static inline Rectangle get_from_pos_to_pos(float cell_size, Pos start, Pos end)
+{
+    if (end.x < start.x)
+        SWAP(end.x, start.x);
+    if (end.y < start.y)
+        SWAP(end.y, start.y);
+    
+    const int width =  GET_WIDTH(start, end);
+    const int height = GET_HEIGHT(start, end);
+
+    return (Rectangle){
+         start.x * W,
+        -end.y   * H - H,
+        width  * cell_size,
+        height * cell_size,
+    };
+}
+
+bool is_mouse_colliding_Rec(Rectangle rec)
+{
+    return CheckCollisionPointRec(GetMousePosition(), rec);
+}
+
 void edition_input(Window *win)
 {
     Ui *ui = &win->ui;
@@ -162,12 +185,70 @@ void edition_input(Window *win)
         if (ui->select.mode == selection_selecting)
         {
             ui->select.end = ui->mouse_pos;
-
-            // if (ui->mouse_pos.x < ui->select.start.x)
             
-                // SWAP(ui->mouse_pos.x, ui->select.start.x);
-            // if (ui->select.end.y < ui->select.start.y)
-            //     SWAP(ui->select.end.y, ui->select.start.y);
+            Rectangle box = get_from_pos_to_pos(win->texs.cell_size, 
+                ui->select.start, ui->select.end
+            );
+
+            const float padding = MOUV_PADDING * H;
+            const float width   = win->texs.cell_size * .4;    
+
+
+            if (GET_WIDTH(ui->select.start, ui->select.end) >= 3
+             && GET_HEIGHT(ui->select.start, ui->select.end) >= 2
+            ) {
+                ui->select.mode_extend_sides |= extend_sides_horizontal;
+                
+                ui->select.sides_vertices[up] = (struct Rounded_rectangle){
+                    .rec = (Rectangle){
+                        .x = box.x + win->texs.cell_size,
+                        .y = box.y + padding,
+                        .width = box.width - 2* win->texs.cell_size,
+                        .height = width,
+                    },
+                    .roundness = width*.5,
+                    .segments = 5,
+                };
+                ui->select.sides_vertices[down] = (struct Rounded_rectangle){
+                    .rec = (Rectangle){
+                        .x = box.x + win->texs.cell_size,
+                        .y = box.y + box.height - padding - width,
+                        .width = box.width - 2* win->texs.cell_size,
+                        .height = width,
+                    },
+                    .roundness = width*.5,
+                    .segments = 5,
+                };
+            }
+            else ui->select.mode_extend_sides &= ~extend_sides_horizontal;
+            if (GET_HEIGHT(ui->select.start, ui->select.end) >= 3
+             && GET_WIDTH(ui->select.start, ui->select.end) >= 2
+            ) {
+                ui->select.mode_extend_sides |= extend_sides_vertical;
+
+                ui->select.sides_vertices[right] = (struct Rounded_rectangle){
+                    .rec = (Rectangle){
+                        .x = box.x + box.width - padding - width,
+                        .y = box.y + win->texs.cell_size,
+                        .width = width,
+                        .height = box.height - 2* win->texs.cell_size,
+                    },
+                    .roundness = width*.5,
+                    .segments = 5,
+                };
+                ui->select.sides_vertices[left] = (struct Rounded_rectangle){
+                    .rec = (Rectangle){
+                        .x = box.x + padding,
+                        .y = box.y + win->texs.cell_size,
+                        .width = width,
+                        .height = box.height - 2* win->texs.cell_size,
+                    },
+                    .roundness = width*.5,
+                    .segments = 5,
+                };
+            }
+            else ui->select.mode_extend_sides &= ~extend_sides_vertical;
+            
             
             printf("select start %i,%i | ", ui->select.start.x, ui->select.start.y);
             printf("select end %i,%i", ui->select.end.x, ui->select.end.y);
@@ -218,9 +299,36 @@ void edition_input(Window *win)
         }
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT)
          && ui->select.mode == selection_seleted
-        ) // cancel/end the selection
-            ui->select.mode = selection_waiting_to_select;
+        ) { // cancel/end the selection
+            if (is_mouse_colliding_Rec(ui->select.sides_vertices[up].rec))
+                ui->select.sides_resize = extend_resize_up;
+            else if (is_mouse_colliding_Rec(ui->select.sides_vertices[right].rec))
+                ui->select.sides_resize = extend_resize_right;
+            else if (is_mouse_colliding_Rec(ui->select.sides_vertices[down].rec))
+                ui->select.sides_resize = extend_resize_down;
+            else if (is_mouse_colliding_Rec(ui->select.sides_vertices[left].rec))
+                ui->select.sides_resize = extend_resize_left;
+            else
+            {
+                ui->select.sides_resize = extend_resize_none;
+                ui->select.mode = selection_waiting_to_select;
+            }
+            printf("resize selected %d", ui->select.sides_resize);
+            UPDATE_LINE;
+        }
         
+        // if (IsMouseButtonDown(MOUSE_BUTTON_LEFT)
+        //  && ui->select.sides_resize != extend_resize_none
+        // ) {
+        //     if (ui->select.sides_resize == extend_resize_up)
+        //     {
+        //         if (ui->select.end.y < ui->select.start.y)
+        //             ui->select.end.y = ui->mouse_pos.y;
+        //         else
+        //             ui->select.start.y  = ui->mouse_pos.y;
+        //     }
+        // }
+
         
     }
 }
