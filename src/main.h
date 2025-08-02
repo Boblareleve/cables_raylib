@@ -93,19 +93,24 @@ typedef struct Texs {
     // sa_float *tex_chunks_y; // for the type
     float cell_size;
     Texture2D  tex;
+    Texture2D  paste_mouver;
 } Texs;
 
 
 
+#define ABS(a) ((a) < 0 ? -(a) : (a))
 // incusive
-#define GET_WIDTH(pos1, pos2) (abs(pos1.x - pos2.x) + 1)
+#define GET_WIDTH(pos1, pos2) (ABS(pos1.x - pos2.x) + 1)
 // incusive
-#define GET_HEIGHT(pos1, pos2) (abs(pos1.y - pos2.y) + 1)
+#define GET_HEIGHT(pos1, pos2) (ABS(pos1.y - pos2.y) + 1)
 #define GET_MIN_WIDTH_HEIGHT(pos1, pos2)\
     MIN(GET_WIDTH(pos1, pos2), GET_HEIGHT(pos1, pos2))
 
+#define POS_TO_VECTOR2(pos) ((Vector2){ (float)(pos).x, (float)(pos).y})
+
+
 #define SELECTION_COLOR (Color){ 0, 121, 241, 32 }
-#define SELECTION_COLOR_OUTLINE (Color){ 0, 121, 241, 172 }
+#define SELECTION_COLOR_OUTLINE (Color){ 0, 121, 241, 128 }
 #define PASTE_SELECTION_COLOR (Color){ 230, 41, 55, 32 }
 #define PASTE_SELECTION_COLOR_OUTLINE (Color){ 230, 41, 55, 128 }
 #define MOUV_PADDING (1./4.)
@@ -125,37 +130,43 @@ typedef struct Select_ui
         extend_sides_horizontal = 0b10,
         extend_sides_full = 0b11,
     } mode_extend_sides;
-    struct Rounded_rectangle {
-        Rectangle rec;
-        float roundness;
-        int segments;
-    } sides_vertices[4]; // up right down left
+    Rectangle sides_vertices[4]; // up right down left
     
     enum Extend_resize {
-        extend_resize_up = up,
+        extend_resize_up    = up,
         extend_resize_right = right,
-        extend_resize_down= down,
-        extend_resize_left = left,
+        extend_resize_down  = down,
+        extend_resize_left  = left,
         extend_resize_none,
-    } sides_resize;
-    
-    /* enum {
-        extend_corner_none = 0,
-        extend_corner_full = 1,
-    } mode_extend_corner;
-    Vector2 corners_vertices[4][3]; // up-left up-right down-right down-left
-     */
+    } mode_sides_resize;
 
-    enum {
-        selection_off,
-        selection_waiting_to_select,
-        selection_selecting,
-        selection_seleted,
-        selection_paste_preview,
-        selection_resizing,
+    enum Mouv_paste {
+        mouv_paste_none = 0,
+        mouv_paste_mouv
+    } mode_mouv_paste;
+    Rectangle paste_vertices;
+    Rectangle selection_box;
+
+    enum Select_state {
+        selection_off = 0,
+
+        selection_waiting = 1,
+        
+        selection_show_blue = 0x10,
+        selection_selecting = selection_show_blue | 0,
+        selection_selected  = selection_show_blue | 1,
+        selection_resizing  = selection_show_blue | 2,
+        
+        selection_show_red = 0x20,
+        selection_paste_preview      = selection_show_red | 0,
+        selection_paste_mouv_preview = selection_show_red | 1,
     } mode;
 
     Strb clipboard;
+    int paste_header_width;
+    int paste_header_height;
+
+
     Strb msg_clipboard;
 } Select_ui;
 
@@ -229,12 +240,29 @@ static inline void Rectangle_print(Rectangle rec)
 {
     printf("x%f y%f w%f h%f", rec.x, rec.y, rec.width, rec.height);
 }
+static inline Rectangle get_rec_from_pos_to_pos(float cell_size, Vector2 start, Vector2 end)
+{
+    if (end.x < start.x)
+        SWAP(end.x, start.x);
+    if (end.y < start.y)
+        SWAP(end.y, start.y);
+    
+    const float width =  GET_WIDTH(start, end);
+    const float height = GET_HEIGHT(start, end);
+
+    return (Rectangle){
+         start.x * W,
+        -end.y   * H - H,
+        width  * cell_size,
+        height * cell_size,
+    };
+}
 
 /* function prototypes */
 
 void inputs(Window *win);
 
-Texs Texs_make(const char *atlas_name);
+Texs Texs_make(const char *atlas_name, const char *paste_mouver_name);
 void Texs_free(Texs *obj);
 
 void Window_draw(const Window *obj);

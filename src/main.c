@@ -27,7 +27,7 @@ Window Window_make(const char *name)
     Window res = (Window){
         .wrd = World_make(name),
         .cam = cam,
-        .texs = Texs_make("./assets/new_atlas.png"),
+        .texs = Texs_make("./assets/new_atlas.png", "./assets/four_way_arrow.png"),
         .ui = Ui_make(cam)
     };
     return res;
@@ -70,14 +70,6 @@ int main(void)
         }
     }
 
-    /* Strb msg = {0};
-    if (!add_pattern_file(&win.wrd, (Pos){1, 1}, "./patterns/xor.pat", &msg))
-        printf("failed to add pat\n");
-    else 
-        printf("msg: %.*s\n", (int)msg.size, msg.arr);
-    Strb_free(msg); */
-    
-   
     while (!WindowShouldClose()) 
     {
         StartBodyEnd(BeginDrawing(), EndDrawing())
@@ -91,6 +83,7 @@ int main(void)
     if (err_save)
     {
         perror("save World");
+        
         printf(err_save);
     }
     

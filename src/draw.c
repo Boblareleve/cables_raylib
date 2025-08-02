@@ -9,10 +9,11 @@ Texture2D load_tex(const char *name)
 }
 
 
-Texs Texs_make(const char *atlas_name)
+Texs Texs_make(const char *atlas_name, const char *paste_mouver_name)
 {
     return (Texs){
         .tex = load_tex(atlas_name),
+        .paste_mouver = load_tex(paste_mouver_name),
         .cell_size = W
     };
 }
@@ -111,69 +112,58 @@ void Chunk_draw(const Window *win, const Chunk *obj)
 }
 
 
-static inline Rectangle get_from_pos_to_pos(float cell_size, Pos start, Pos end)
+
+
+static void ui_select_draw(const Ui *ui, const Texs *texs)
 {
-    if (end.x < start.x)
-        SWAP(end.x, start.x);
-    if (end.y < start.y)
-        SWAP(end.y, start.y);
-    
-    const int width =  GET_WIDTH(start, end);
-    const int height = GET_HEIGHT(start, end);
+    UNUSED(texs);
 
-    return (Rectangle){
-         start.x * W,
-        -end.y   * H - H,
-        width  * cell_size,
-        height * cell_size,
-    };
-}
+    DrawRectangleRec(
+        ui->select.selection_box,
+        SELECTION_COLOR
+    );
+    DrawRectangleLinesEx(
+        ui->select.selection_box,
+        2, 
+        SELECTION_COLOR_OUTLINE
+    );
 
-
-
-void mouv_draw(const Ui *ui, const Texs *texs, Rectangle selection_box)
-{
-    // if (ui->select.mode_extend_corner == extend_corner_full)
-    // { // draw corner
-    //     for (int i = 0; i < (ssize_t)ARRAY_LEN(ui->select.corners_vertices); i++)
-    //     {
-    //         assert(3 == (ssize_t)ARRAY_LEN(ui->select.corners_vertices[i]));
-    //         // printf("draw corner %i: %f %f ; %f %f ; %f %f\n", i, 
-    //         //     ui->select.corners_vertices[i][0].x, ui->select.corners_vertices[i][0].y,
-    //         //     ui->select.corners_vertices[i][1].x, ui->select.corners_vertices[i][1].y,
-    //         //     ui->select.corners_vertices[i][2].x, ui->select.corners_vertices[i][2].y
-    //         // );
-    //         DrawTriangleFan(
-    //             ui->select.corners_vertices[i],
-    //             (ssize_t)ARRAY_LEN(ui->select.corners_vertices[i]),
-    //             SELECTION_COLOR_OUTLINE
-    //         );
-    //     }
-    // }
-    
-    // draw sides ONLY
     for (Direction dir = 0; dir < (ssize_t)ARRAY_LEN(ui->select.sides_vertices); dir++)
     {
         if (
             ((dir == up   || dir == down ) && (ui->select.mode_extend_sides & extend_sides_horizontal))
          || ((dir == left || dir == right) && (ui->select.mode_extend_sides & extend_sides_vertical))
         )
-            // DrawTriangleFan(
-            //     ui->select.sides_vertices[dir],
-            //     (ssize_t)ARRAY_LEN(ui->select.sides_vertices[dir]),
-            //     SELECTION_COLOR_OUTLINE
-            // );
             DrawRectangleRec(
-                ui->select.sides_vertices[dir].rec, 
+                ui->select.sides_vertices[dir], 
                 SELECTION_COLOR_OUTLINE
             );
-            // DrawRectangleRounded(
-            //     ui->select.sides_vertices[dir].rec, 
-            //     ui->select.sides_vertices[dir].roundness,
-            //     ui->select.sides_vertices[dir].segments,
-            //     SELECTION_COLOR_OUTLINE
-            // );
     }
+}
+
+static void ui_paste_previw_draw(const Ui *ui, const Texs *texs)
+{
+    DrawRectangleRec(
+        ui->select.selection_box,
+        PASTE_SELECTION_COLOR
+    );
+    DrawRectangleLinesEx(
+        ui->select.selection_box,
+        2,
+        PASTE_SELECTION_COLOR_OUTLINE
+    );
+    
+    DrawTexturePro(texs->paste_mouver,
+        (Rectangle){
+            .x = 0, 
+            .y = 0, 
+            .width = texs->paste_mouver.width, 
+            .height = texs->paste_mouver.height
+        },
+        ui->select.paste_vertices,
+        (Vector2){0},
+        0, PASTE_SELECTION_COLOR_OUTLINE
+    );
 }
 
 static inline void Ui_draw(const Ui *ui, const Texs *texs, const Camera2D cam)
@@ -194,45 +184,10 @@ static inline void Ui_draw(const Ui *ui, const Texs *texs, const Camera2D cam)
         }
         else if (ui->mode == mode_select)
         { // draw selection
-            if (ui->select.mode == selection_selecting
-                || ui->select.mode == selection_seleted
-            ) {
-                Rectangle selection_box = get_from_pos_to_pos(
-                    texs->cell_size,
-                    ui->select.start,
-                    ui->select.end
-                );
-                // Rectangle_print(selection_box);
-                // printf("\n\n\n");
-                DrawRectangleRec(
-                    selection_box,
-                    SELECTION_COLOR
-                );
-                DrawRectangleLinesEx(
-                    selection_box,
-                    2, 
-                    SELECTION_COLOR_OUTLINE
-                );
-                mouv_draw(ui, texs, selection_box);
-            }
-            else if (ui->select.mode == selection_paste_preview)
-            {
-                DrawRectangleRec(
-                    get_from_pos_to_pos(texs->cell_size,
-                        ui->select.start,
-                        ui->select.end
-                    ),
-                    PASTE_SELECTION_COLOR
-                );
-                DrawRectangleLinesEx(
-                    get_from_pos_to_pos(texs->cell_size,
-                        ui->select.start,
-                        ui->select.end
-                    ),
-                    2,
-                    PASTE_SELECTION_COLOR_OUTLINE
-                );
-            }
+            if (ui->select.mode & selection_show_blue) 
+                ui_select_draw(ui, texs);
+            else if (ui->select.mode & selection_show_red)
+                ui_paste_previw_draw(ui, texs);
         }
     }
     if (ui->mode == mode_editing)

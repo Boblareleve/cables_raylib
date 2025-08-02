@@ -128,9 +128,6 @@ char *save_pattern(const World *obj, Strb *res, const char *head_msg, Pos pos1, 
     int width = end.x - start.x + 1;
     int height = end.y - start.y + 1;
 
-    printf("save box: x1%i y1%i x2%i y2%i\n", start.x, start.y, end.x, end.y);
-
-
     Strb_cat(res, head_msg);
     Strb_ncat(res, " :", 2);
     Strb_catf(res, "%u", width);
@@ -139,30 +136,29 @@ char *save_pattern(const World *obj, Strb *res, const char *head_msg, Pos pos1, 
     Strb_cat_char(res, '\n');
     
     Pos_Globale gpos = Pos_to_Pos_Globale((Pos){ start.x, end.y });
-    Chunk *chunk = UNWRAPE_ITEM_CHUNK(set_Item_chunks_get(
+    Item_chunks *chunk = set_Item_chunks_get(
         &obj->chunks, 
         (Item_chunks){ .pos = gpos.chunk }
-    ));
+    );
     
     for (int cy = end.y; cy >= start.y; cy--)
     {
         for (int cx = start.x; cx <= end.x; cx++)
         {
-            printf("cx, cy = %i, %i\n", cx, cy);
             gpos = Pos_to_Pos_Globale((Pos){ cx, cy });
             if (chunk->pos.packed != gpos.chunk.packed)
             {
-                chunk = UNWRAPE_ITEM_CHUNK(set_Item_chunks_get(
+                chunk = set_Item_chunks_get(
                     &obj->chunks, 
                     (Item_chunks){ .pos = gpos.chunk }
-                ));
+                );
             }
 
-            if (chunk == NULL)
+            if (chunk->data == NULL)
                 Strb_ncat(res, "  ,", 3);
             else
             {
-                uint16_t chars = convert_Cell_to_chars(chunk->arr[gpos.cell], obj->state);
+                uint16_t chars = convert_Cell_to_chars(chunk->data->arr[gpos.cell], obj->state);
                 if (chars == 0)
                     Strb_ncat(res, "  ,", 3);    
                 else
@@ -176,7 +172,7 @@ char *save_pattern(const World *obj, Strb *res, const char *head_msg, Pos pos1, 
         Strb_ncat(res, &"\r\n"[!is_CRLF], 1 + is_CRLF);
     }
 
-    if (DEBUG_VALUE)
+    if (0 && DEBUG_VALUE)
     {
         printf("save pattern: \"");
         Str_print(*res);
@@ -267,7 +263,7 @@ Pattern_header get_pattern_header(Strv pattern_string)
 
 bool add_pattern(World *obj, Pos pos, Strv pattern, Strb *res_msg)
 {
-    if (DEBUG_VALUE)
+    if (0 && DEBUG_VALUE)
     {
         printf("add pattern at %i,%i: \"", pos.x, pos.y);
         Str_print(pattern);
@@ -369,7 +365,7 @@ char *save_World(const World *obj, const char *file_name)
         .chunk_height = H,
         .chunk_count = obj->chunks.item_count
     };
-    Strb_ncat(&to_write, (char*)&head, sizeof(head));
+    if (!Strb_ncat(&to_write, (char*)&head, sizeof(head))) return "[ERROR] out of memory";
     
     for_set (Item_chunks, item, &obj->chunks)
     {
@@ -404,7 +400,7 @@ char *save_World(const World *obj, const char *file_name)
     }
 
     
-    if (Str_write_all(file_name, to_write.self))
+    if (!Str_write_all(file_name, to_write.self))
     {
         Strb_free(to_write);
         return "[ERROR] save_World: fileio";
