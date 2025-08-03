@@ -109,9 +109,9 @@ typedef struct Chunk
     da_Pos_Chunk not_gate; // 16bytes
 } Chunk;
 
-static_assert(sizeof((Chunk){0}.arr) == sizeof((Chunk){0}.arr2D));
-static_assert(sizeof((Chunk){0}.arr) == sizeof(Cell) * W * H);
-static_assert(sizeof(Chunk) == 384, "");
+static_assert(sizeof((Chunk){0}.arr) == sizeof((Chunk){0}.arr2D), "chunk .arr is not the same size as .arr2D");
+static_assert(sizeof((Chunk){0}.arr) == sizeof(Cell) * W * H, "chunk .arr have an unexpected size");
+static_assert(sizeof(Chunk) == 384, "raw size check of Chunk");
 // 256-512                4 * 64 + 138 = 256 + 128 = 386 = 6 * 64
 
 // 2 -> 0b01010 0

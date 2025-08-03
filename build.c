@@ -31,6 +31,10 @@ typedef struct Arg_Shell_List
         inc,
         once,
     } mode;
+    enum Platform {
+        platform_windows,
+        platform_linux,
+    } platform;
 
     da_Strv comp_flags;
     da_Strv link_flags;
@@ -43,9 +47,10 @@ typedef struct Arg_Shell_List
 Arg_Shell_List arg_parse(const sa_Strv *args)
 {
     Arg_Shell_List res = {
-        .mode = all,
+        .mode =   once,
         .target = debug,
-        .scoop = game,
+        .scoop =  game,
+        .platform = platform_linux,
         .compiler = Strv_cstr("cc")
     };
     for (int i = 1; i < args->size; i++)
@@ -93,7 +98,6 @@ Arg_Shell_List arg_parse(const sa_Strv *args)
                 res.mode = once;
             else printf("[WARNING] unreconize target fallback to default\n");
         }
-        
         else if (Str_start_with_cstr(arg, "-s")
               || Str_start_with_cstr(arg, "-scoop")
         ) {
@@ -110,6 +114,22 @@ Arg_Shell_List arg_parse(const sa_Strv *args)
                 res.scoop = engin;
             else printf("[WARNING] unreconized scoop fallback to default\n");
         }
+        else if (Str_start_with_cstr(arg, "-p")
+              || Str_start_with_cstr(arg, "-platform")
+        ) {
+            if (args->size <= ++i)
+            {
+                printf("[ERROR] expected platform name\n");
+                exit(1);
+            }
+            arg = args->arr[i];
+
+            if (Str_start_with_cstr(arg, "linux"))
+                res.platform = platform_linux;
+            else if (Str_start_with_cstr(arg, "windows"))
+                res.platform = platform_windows;
+            else printf("[WARNING] unreconized platform fallback to default\n");
+        }
         else
         {
             printf("[ERROR] unreconize argument -> \"");
@@ -119,7 +139,6 @@ Arg_Shell_List arg_parse(const sa_Strv *args)
         }
     }
 
-    // printf("mode %d ; target %d ; scoop %d\n", res.mode, res.target, res.scoop);
     { // general flags
         Strb build_path = Strb_cstr("-I");
         Strb_cat(&build_path, getenv("HOME"));
@@ -130,7 +149,8 @@ Arg_Shell_List arg_parse(const sa_Strv *args)
             Strv_cstr("-I./includes"),
             build_path.self,
             Strv_cstr("-Wall"),
-            Strv_cstr("-Wextra")
+            Strv_cstr("-Wextra"),
+            Strv_cstr("-Wno-missing-braces")
         );
         
         // da_print(&res.comp_flags, Str_print);
@@ -143,14 +163,9 @@ Arg_Shell_List arg_parse(const sa_Strv *args)
     }
     { // mode
         if (res.mode == all)
-        {
             da_push(&res.comp_flags, Strv_cstr("-c"));
-        }
         else if (res.mode == inc)
-        { 
-            da_push(&res.comp_flags, Strv_cstr("-time"));
             TODO("impl inc ");
-        }
         else if (res.mode == once) {}
         else UNREACHABLE("invalid mode");
     }
@@ -158,8 +173,7 @@ Arg_Shell_List arg_parse(const sa_Strv *args)
         if (res.target == debug)
         {
             da_push_many(&res.comp_flags,
-                Strv_cstr("-fsanitize=address"),
-                Strv_cstr("-fsanitize=undefined"),
+                Strv_cstr("-fsanitize=address,undefined,leak"), 
                 Strv_cstr("-g3"),
                 Strv_cstr("-gdwarf-2"),
                 Strv_cstr("-DDEBUG")
@@ -171,6 +185,8 @@ Arg_Shell_List arg_parse(const sa_Strv *args)
                 Strv_cstr("-O2"), 
                 Strv_cstr("-DNDEBUG")
             );
+            if (res.mode == once)
+                da_push(&res.link_flags, Strv_cstr("-flto"));
         }
         else if (res.target == gdb)
         {
@@ -207,7 +223,12 @@ Arg_Shell_List arg_parse(const sa_Strv *args)
         }
         else UNREACHABLE("invalid scoop");
     }
-
+    { // platform
+        if (res.platform == platform_linux) {}
+        else if (res.platform == platform_windows)
+            TODO("windows platform");
+        else UNREACHABLE("invalid platform");
+    }
     return res;
 } 
 
@@ -220,7 +241,6 @@ sa_Strv *argcv_strv(int argc, char **argv)
 
     return res;
 }
-
 int main(int argc, char **argv)
 {
     { // go_rebuild urself
@@ -237,7 +257,7 @@ int main(int argc, char **argv)
         da_free_func(&rebuild_flags, Strb_free);
     }
 
-    // dddddddddddddddddddddddddddd
+    // dddddddddddddddddddddddddddddd
 
     sa_Strv *args = argcv_strv(argc, argv);
     if (!args) return 1;

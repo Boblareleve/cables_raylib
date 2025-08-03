@@ -65,7 +65,7 @@ static inline Cell convert_chars_to_Cell(char code[2])
         if (code[1] == 'b' || code[1] == ' ') 
             return bridge;
         break;
-    default:
+    default:;
     }
     return state_trap;
 }
@@ -346,7 +346,7 @@ typedef struct Cell_data {
     Pos_Chunk pos;
     Cell value;
 } Cell_data;
-static_assert(sizeof(Cell_data) == 2);
+static_assert(sizeof(Cell_data) == 2, "sizeof Cell_data");
 
 typedef struct Chunk_Write {
     Pos pos;
