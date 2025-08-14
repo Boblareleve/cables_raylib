@@ -6,6 +6,7 @@
 #include "raylib.h"
 #include "rlgl.h"
 #include "raymath.h"
+#include "raygui.h"
 
 /* std */
 #include <signal.h>
@@ -109,10 +110,25 @@ typedef struct Texs {
 #define POS_TO_VECTOR2(pos) ((Vector2){ (float)(pos).x, (float)(pos).y})
 
 
-#define SELECTION_COLOR (Color){ 0, 121, 241, 32 }
-#define SELECTION_COLOR_OUTLINE (Color){ 0, 121, 241, 128 }
-#define PASTE_SELECTION_COLOR (Color){ 230, 41, 55, 32 }
-#define PASTE_SELECTION_COLOR_OUTLINE (Color){ 230, 41, 55, 128 }
+
+
+
+typedef struct Button
+{
+    Rectangle bound;
+    bool hiden;
+    bool active;
+    bool is_pressed;
+    const char *text;
+    Camera2D used_cam;
+    // bool is_in_world_space;
+} Button;
+
+
+#define SELECTION_COLOR                 (Color){ 0,   121, 241, 32  }
+#define SELECTION_COLOR_OUTLINE         (Color){ 0,   121, 241, 128 }
+#define PASTE_SELECTION_COLOR           (Color){ 230, 41,  55,  32  }
+#define PASTE_SELECTION_COLOR_OUTLINE   (Color){ 230, 41,  55,  128 }
 #define MOUV_PADDING (1./4.)
 
 typedef struct Select_ui
@@ -170,20 +186,53 @@ typedef struct Select_ui
     Strb msg_clipboard;
 } Select_ui;
 
-typedef struct Edit_ui {
+typedef struct Edit_ui
+{
     Cell current_state;
     Direction current_direction;
+
+    enum Edit_interpolation_mode {
+        interpolation_none,
+        interpolation_orthogonal,
+        interpolation_lign
+    } interpolation_mode;
+
+    
+    Pos drag_start;
+    Pos drag_end;
+
+    Vector2 current_drag_start;
+    Vector2 current_drag_end;
+
 } Edit_ui;
 
 typedef struct Ui
 {
+    Camera2D in_game_ui_cam;
     enum Interaction_mode {
         mode_idle, // no editing and anything
         mode_editing,
-        mode_select
+        mode_select,
+        mode_count
     } mode;
+    union
+    {
+        struct {
+            Button mode_idle;
+            Button mode_editing;
+            Button mode_select;
+        };
+        Button modes[mode_count];
+    };
+    
+    // mode_mouv_drag,
+    Button mode_mouv_drag;
+    
 
     Pos mouse_pos;
+    Pos old_mouse_pos;
+    bool is_button_clicked;
+
 
     Edit_ui edit;
     Select_ui select;
@@ -199,6 +248,7 @@ typedef struct Window
 
     Texs texs;
 
+    Color background_color;
     Ui ui;
 } Window;
 
@@ -223,19 +273,13 @@ static inline Pos screen_to_Pos(Camera2D cam, Vector2 pos)
         .y = (int)(-pos.y + (pos.y > 0 ? -1 : 0))
     };
 }
-static inline Pos_Globale screen_to_Pos_Globale(Camera2D cam, Vector2 pos)
+/* static inline Pos screen_to_P*os_Globale(Camera2D cam, Vector2 pos)
 {
-    return Pos_to_Pos_Globale(
+    return Pos_to_P*os_Globale(
         screen_to_Pos(cam, pos)
     );
-}
-static inline void sort_Pos_Globale(Pos *pos1, Pos *pos2)
-{
-    if (pos1->x > pos2->x)
-        SWAP(pos1->x, pos2->x);
-    if (pos1->y < pos2->y)
-        SWAP(pos1->y, pos2->y);
-}
+} */
+
 static inline void Rectangle_print(Rectangle rec)
 {
     printf("x%f y%f w%f h%f", rec.x, rec.y, rec.width, rec.height);
@@ -252,33 +296,55 @@ static inline Rectangle get_rec_from_pos_to_pos(float cell_size, Vector2 start, 
 
     return (Rectangle){
          start.x * W,
-        -end.y   * H - H,
+          -end.y * H - H,
         width  * cell_size,
         height * cell_size,
     };
 }
+static inline bool button(Ui *ui, Camera2D cam, Rectangle bounds, const char *text)
+{
+    bool click = GuiButton(cam, bounds, text);
+    ui->is_button_clicked = ui->is_button_clicked || click;
+
+    return click;
+}
+static inline bool is_mouse_button_down(const Ui *ui, int button)
+{
+    return !ui->is_button_clicked && IsMouseButtonDown(button);
+}
+static inline bool is_mouse_button_released(const Ui *ui, int button)
+{
+    return !ui->is_button_clicked && IsMouseButtonReleased(button);
+}
+static inline bool is_mouse_button_up(const Ui *ui, int button)
+{
+    return !ui->is_button_clicked && IsMouseButtonUp(button);
+}
+static inline bool is_mouse_button_pressed(const Ui *ui, int button)
+{
+    return !ui->is_button_clicked && IsMouseButtonPressed(button);
+}
+
+
 
 /* function prototypes */
 
-void inputs(Window *win);
+
 
 Texs Texs_make(const char *atlas_name, const char *paste_mouver_name);
-void Texs_free(Texs *obj);
+void Texs_free(Texs *texs);
 
-void Window_draw(const Window *obj);
+// can update some ui value (for raygui.h buttons)
+void Window_draw(const Window *wrd, Ui *ui);
 
+void inputs(Window *win);
 Ui Ui_make(Camera2D cam);
 void Ui_free(Ui *ui);
 
-
-
-
-
-
-
+bool pull_Button(const Ui *ui, Button *button);
+void draw_Button(Button button);
 
 
 
 #endif /* MAIN_H */
-
 

@@ -41,6 +41,7 @@ typedef struct Arg_Shell_List
     da_Strv source_files;
 
     Strv compiler;
+    Strv bin_name;
 
     int64_t proc_max;
 } Arg_Shell_List;
@@ -51,7 +52,8 @@ Arg_Shell_List arg_parse(const sa_Strv *args)
         .target = debug,
         .scoop =  game,
         .platform = platform_linux,
-        .compiler = Strv_cstr("cc")
+        .compiler = Strv_cstr("cc"),
+        .bin_name = Strv_cstr("cables")
     };
     for (int i = 1; i < args->size; i++)
     {
@@ -130,6 +132,28 @@ Arg_Shell_List arg_parse(const sa_Strv *args)
                 res.platform = platform_windows;
             else printf("[WARNING] unreconized platform fallback to default\n");
         }
+        else if (Str_start_with_cstr(arg, "-D"))
+            da_push(&res.comp_flags, arg);
+        else if (Str_start_with_cstr(arg, "-o"))
+        {
+            if (args->size <= ++i)
+            {
+                printf("[ERROR] missing binary name\n");
+                exit(1);
+            }
+            res.bin_name = args->arr[i];
+        }
+        else if (Str_equal(arg, Strv_cstr("-help"))
+              || Str_equal(arg, Strv_cstr("-h")))
+        {
+            printf("arg list\n");
+            printf("    -j<number>                   how many thread to use (a positive number 0 fall back to 1)\n");
+            printf("    -o <name>                    name of the binary (name: a string)\n");
+            printf("    (-m)|(-mode) <mode>          how to build (\"inc\", \"once\", \"all\")\n");
+            printf("    (-t)|(-target) <target>      what config to use (\"debug\", \"release\", \"gdb\")\n");
+            printf("    (-s)|(-scoop) <scoop>        what part of the project to build (\"engin\", \"game\")\n");
+            printf("    (-p)|(-platform) <platform>  what platform to build for (\"linux\", \"windows\")\n");
+        }
         else
         {
             printf("[ERROR] unreconize argument -> \"");
@@ -173,7 +197,7 @@ Arg_Shell_List arg_parse(const sa_Strv *args)
         if (res.target == debug)
         {
             da_push_many(&res.comp_flags,
-                Strv_cstr("-fsanitize=address,undefined,leak"), 
+                Strv_cstr("-fsanitize=address,"/* undefined, */"leak"), 
                 Strv_cstr("-g3"),
                 Strv_cstr("-gdwarf-2"),
                 Strv_cstr("-DDEBUG")
@@ -206,6 +230,7 @@ Arg_Shell_List arg_parse(const sa_Strv *args)
                 Strv_cstr(SRC_DIR"main.c"),
                 Strv_cstr(SRC_DIR"lib_impl.c"),
                 Strv_cstr(SRC_DIR"draw.c"),
+                Strv_cstr(SRC_DIR"button.c"),
                 Strv_cstr(SRC_DIR"ui_input.c")
             );
 
@@ -275,7 +300,7 @@ int main(int argc, char **argv)
             da_push(&cmd, *file);
         
         da_push(&cmd, Strv_cstr("-o"));
-        da_push(&cmd, Strv_cstr("once_binary"));
+        da_push(&cmd, parameters.bin_name);
 
         foreach_ptr (Strv, flag, &parameters.comp_flags)
             da_push(&cmd, *flag);

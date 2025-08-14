@@ -80,18 +80,26 @@ typedef struct Arg_Shell_List
         engin_debug,
         engin_release,
     } target;
+    enum Mode {
+        all,
+        inc,
+        once,
+    } mode;
     Cmd additionnal_compilation_flags;
     Cmd additionnal_link_flags;
-    int thread_count;
+    int proc_max;
 } Arg_Shell_List;
 Arg_Shell_List arg_parse(int argc, char **argv)
 {
-    Arg_Shell_List res = {0};
+    Arg_Shell_List res = {
+        .mode = all,
+        .target = debug
+    };
 
     for (int i = 1; i < argc; i++)
     {
-        if (0 == memcmp(argv[i], "-j", 2))
-            res.thread_count = atoi(&argv[i][2]);
+        if (!memlitcmp(argv[i], "-j"))
+            res.proc_max = atoi(&argv[i][2]);
         else if (!memlitcmp(argv[i], "debug"))
         {
             cmd_append(&res.additionnal_compilation_flags, "-fsanitize=address");
@@ -134,21 +142,55 @@ Arg_Shell_List arg_parse(int argc, char **argv)
         }
         else if (strlen(argv[i]) >= 2 && 0 == memcmp(argv[i], "-D", 2))
             cmd_append(&res.additionnal_compilation_flags, argv[i]);
+        else if (!memlitcmp(argv[i], "-m"))
+        {
+            i++;
+            if (i < argc)
+                switch (argv[i][0])
+                {
+                case 'a': 
+                    if (!memlitcmp(argv[i], "all"))
+                        res.mode = all;
+                    else goto mode_unreconized;
+                    break;
+                case 'i': 
+                    if (!memlitcmp(argv[i], "inc"))
+                        res.mode = inc;
+                    else goto mode_unreconized;
+                    break;
+                case 'o': 
+                    if (!memlitcmp(argv[i], "once"))
+                        res.mode = once;
+                    else goto mode_unreconized;
+                    break;
+                mode_unreconized:
+                default:
+                    printf("unreconize mode -> %s\n", argv[i]);
+                    exit(3);
+                    break;
+                }
+            else 
+            {
+                printf("expected an mode type: \"all\", \"inc\", \"once\"\n");
+                exit(4);
+            }
+        }    
         else
         {
             printf("unreconize argument -> %s\n", argv[i]);
             exit(2);
         }
     }
-    if (res.target == none)
-        res.target = debug;
-    
     return (res);
 } 
 
+void o_file(const char *file, const Arg_Shell_List *arg)
+{
+
+}
 
 // build .o
-void make_o_files(const char **source_files, int size, const Arg_Shell_List *arg)
+void o_files(const char **source_files, int size, const Arg_Shell_List *arg)
 { 
     Procs procs_ids = {0};
     for (int i = 0; i < size; i++)
@@ -158,14 +200,14 @@ void make_o_files(const char **source_files, int size, const Arg_Shell_List *arg
 
         // rm old one
         {
-            Cmd cmd1 = {0};
-            cmd_append(&cmd1, "rm", o_file_path);
-            cmd_run_sync_and_reset(&cmd1);
+            cmd_append(&cmd, "rm", o_file_path);
+            cmd_run_sync_and_reset(&cmd);
         }
 
+        cmd = (Cmd){0};
         // add async cmd
         cmd_append(&cmd, COMPILER);
-
+        
         String_Builder path_home = {0};
         /* { // -I$HOME/...
             sb_append_cstr(&path_home, "-I");
@@ -182,16 +224,16 @@ void make_o_files(const char **source_files, int size, const Arg_Shell_List *arg
             cmd_append(&cmd, *str_flag);
         cmd_append(&cmd, SHARED_FLAGS, GENERAL_FLAGS, "-c", source_files[i], "-o", o_file_path);
         
-        Proc tmp = arg->thread_count ? cmd_run_async_and_reset(&cmd) 
+        Proc tmp = arg->proc_max ? cmd_run_async_and_reset(&cmd) 
                                      : cmd_run_sync_and_reset(&cmd);
         if (tmp == INVALID_PROC)
             exit(1);
         
-        if (arg->thread_count)
-            procs_append_with_flush(&procs_ids, tmp, arg->thread_count); // wait if more than max_count
+        if (arg->proc_max)
+            procs_append_with_flush(&procs_ids, tmp, arg->proc_max); // wait if more than max_count
     }
     // wait
-    if (arg->thread_count) da_foreach (Proc, pc, &procs_ids)
+    if (arg->proc_max) da_foreach (Proc, pc, &procs_ids)
         proc_wait(*pc);
 }
 
@@ -250,15 +292,30 @@ int main(int argc, char **argv)
         mkdir_if_not_exists(SRC_DIR);
         mkdir_if_not_exists(ENGIN_DIR);
 
-        make_o_files(source_files, ARRAY_LEN(source_files), &arg);
-        link_o_files(
-            source_files,
-            ARRAY_LEN(source_files), 
-            &arg,
-            arg.target == debug ? "debug"
-                        : gdb   ? "gdb"
-                        :/* _  ?*/"release"
-        );
+        if (arg.mode == all)
+        {
+            o_files(source_files, ARRAY_LEN(source_files), &arg);
+            link_o_files(
+                source_files,
+                ARRAY_LEN(source_files), 
+                &arg,
+                arg.target == debug ? "debug"
+                            : gdb   ? "gdb"
+                            :/* _  ?*/"release"
+            );
+        }
+        else if (arg.mode == inc)
+        {
+            TODO("impl mode");
+        }
+        else if (arg.mode == once)
+        {
+            TODO("impl mode");
+        }
+        else
+        {
+            TODO("impl mode");
+        }
     }
     else if (argc >= 2 && (arg.target == engin_debug || arg.target == engin_release))
     {
@@ -266,14 +323,29 @@ int main(int argc, char **argv)
         mkdir_if_not_exists(SRC_DIR);
         mkdir_if_not_exists(ENGIN_DIR);
 
-        make_o_files(engin_source_files, ARRAY_LEN(engin_source_files), &arg);
-        link_o_files(
-            engin_source_files, 
-            ARRAY_LEN(engin_source_files),
-            &arg,
-            arg.target == engin_debug ? "engin_debug" 
-                                      : "engin_release"
-        );
+        if (arg.mode == all)
+        {
+            o_files(engin_source_files, ARRAY_LEN(engin_source_files), &arg);
+            link_o_files(
+                engin_source_files, 
+                ARRAY_LEN(engin_source_files),
+                &arg,
+                arg.target == engin_debug ? "engin_debug" 
+                                          : "engin_release"
+            );
+        }
+        else if (arg.mode == inc)
+        {
+            TODO("impl mode");
+        }
+        else if (arg.mode == once)
+        {
+            TODO("impl mode");
+        }
+        else
+        {
+            TODO("impl mode");
+        }
     }
     else printf("done nothing");
 

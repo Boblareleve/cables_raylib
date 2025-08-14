@@ -16,7 +16,9 @@ Window Window_make(const char *name)
     SetTraceLogLevel(LOG_WARNING);
     // SetTargetFPS(INT32_MAX);
     SetTargetFPS(60);
-    InitWindow(900, 900, name);
+
+    const float ratio = 1.5;
+    InitWindow(1600 / ratio, 900 / ratio, name);
 
     Camera2D cam = (Camera2D){
         .offset = (Vector2){ GetScreenHeight() / 2, GetScreenWidth() / 2 }, // Camera offset (displacement from target)
@@ -25,18 +27,19 @@ Window Window_make(const char *name)
         .zoom = GetScreenWidth() / CHUNK_WORLD_SIZE,
     };
     Window res = (Window){
-        .wrd = World_make(name),
+        .wrd = (World){0},
         .cam = cam,
         .texs = Texs_make("./assets/new_atlas.png", "./assets/four_way_arrow.png"),
-        .ui = Ui_make(cam)
+        .ui = Ui_make(cam),
+        .background_color = DARKGRAY
     };
     return res;
 }
-void Window_free(Window *obj)
+void Window_free(Window *win)
 {
-    Texs_free(&obj->texs);
-    World_free(&obj->wrd);
-    Ui_free(&obj->ui);
+    Texs_free(&win->texs);
+    World_free(&win->wrd);
+    Ui_free(&win->ui);
     CloseWindow();
 }
 
@@ -44,13 +47,14 @@ void Window_free(Window *obj)
 /* TODO:
 
  * edition 
-    -> selection copy paste rotate flip X
+    -> selection copy paste rotate flip
  * load/save file
     -> GUI
  * color by chunk for thread lockless
  * shader render
  * finish connection engin (support for bridge and update when possing T en N)
-
+ * debug engin
+ * 
 */
 
 int main(void)
@@ -59,25 +63,23 @@ int main(void)
     
     
     if (1) /* load world */ {
-        World tmp_world = {0};
-        char *err_world = load_World("./save/world1.wrd", &tmp_world);
+        char *err_world = load_World("./save/world1.wrd", &win.wrd);
         if (err_world) {
             perror("open");
             printf("%s\n", err_world);
-        } else {
-            World_free(&win.wrd);
-            win.wrd = tmp_world;
+            win.wrd = World_make("main");
         }
     }
 
-    while (!WindowShouldClose()) 
+
+    while (!WindowShouldClose())
     {
         StartBodyEnd(BeginDrawing(), EndDrawing())
         {
             inputs(&win);
-            Window_draw(&win);
+            Window_draw(&win, &win.ui);
         }
-    } 
+    }
     
     const char *err_save = save_World(&win.wrd, "./save/world1.wrd");
     if (err_save)

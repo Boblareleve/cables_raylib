@@ -61,6 +61,9 @@ typedef struct iRectangle
 
 
 #define Null_Struct(T, value) (0 == memcmp(&value, &(T){0}, sizeof(value)))
+#ifndef ABS
+# define ABS(a) ((a) < 0 ? -(a) : (a))
+#endif /* ABS */
 
 #define POS_Y_MASK 0b00001111
 #define POS_Y_UNIT 0b00000001
@@ -70,17 +73,17 @@ typedef struct iRectangle
 #define POS_CHUNK(x, y) (((x) << 4) | (y))
 #define POS_CHUNK_X(pos) ((pos) >> 4)
 #define POS_CHUNK_Y(pos) ((pos) & 0b1111)
-
+#define POS_CHUNK_TO_POS(pos) (Pos){ POS_CHUNK_X(pos), POS_CHUNK_Y(pos) }
 
 typedef uint8_t Pos_Chunk;
 DA_TYPEDEF_ARRAY(Pos_Chunk);
 
-typedef struct Pos_Globale
+/* typedef struct Pos_Globale
 {
     Pos chunk;
     Pos_Chunk cell;
 } Pos_Globale;
-
+ */
 
 typedef uint8_t Cell;
 typedef struct World World;
@@ -263,29 +266,49 @@ typedef struct World
 World World_make(const char *name);
 
 
-void World_tick(World *obj);
-void Chunk_print(const Chunk *obj);
-// void World_basic_print(const World *obj, bool more);
+void World_tick(World *wrd);
+void Chunk_print(const Chunk *chunk);
 
-bool World_set_cell(World *obj, Pos pos_world, Pos_Chunk pos_chunk, State value);
-bool Chunk_set_cell(Chunk *obj, Pos_Chunk pos, State value);
+bool World_set_cell(World *wrd, Pos pos, State value);
+bool World_set_orth_lign_cell(World *wrd, Pos pos1, Pos pos2, State value);
+bool World_set_lign_cell(World *wrd, Pos pos1, Pos pos2, State value);
+bool World_delete_area(World *wrd, Pos pos1, Pos pos2);
+bool Chunk_set_cell(Chunk *chunk, Pos_Chunk pos, State value);
 Chunk *add_Chunk(World *parent, Pos pos);
-bool erase_Chunk(Chunk *obj);
+bool erase_Chunk(Chunk *chunk);
 bool erase_Chunk_pos(World *parent, Pos pos);
-void World_free(World *obj);
+void World_free(World *wrd);
 
-Pos_Globale Pos_to_Pos_Globale(Pos pos);
-
+// Pos Pos_to_Pos_Globale(Pos pos);
+static inline Pos get_chunk_Pos(Pos pos)
+{
+    return (Pos){
+        .x = (pos.x >> 4),
+        .y = (pos.y >> 4)
+    };
+}
+static inline Pos_Chunk get_cell_pos(Pos pos)
+{
+    return ((pos.x & 0xf) << 4)
+          | (pos.y & 0xf);
+}
+static inline void sort_Pos_Globale(Pos *pos1, Pos *pos2)
+{
+    if (pos1->x > pos2->x)
+        SWAP(pos1->x, pos2->x);
+    if (pos1->y < pos2->y)
+        SWAP(pos1->y, pos2->y);
+}
 
 char *load_World(const char *file, World *res);
-char *save_World(const World *obj, const char *file_name);
+char *save_World(const World *wrd, const char *file_name);
 
 #define PATTERN_DEFAULT_DESCRIPTION "no description"
 
-bool add_pattern(World *obj, Pos pos, const Strv pattern, Strb *res_msg);
-bool add_pattern_file(World *obj, Pos pos, const char *file, Strb *res_msg);
-char *save_pattern(const World *obj, Strb *res, const char *head_msg, Pos pos1, Pos pos2);
-char *save_pattern_file(const World *obj, const char *file, const char *head_msg, Pos pos1, Pos pos2);
+bool add_pattern(World *wrd, Pos pos, const Strv pattern, Strb *res_msg);
+bool add_pattern_file(World *wrd, Pos pos, const char *file, Strb *res_msg);
+char *save_pattern(const World *wrd, Strb *res, const char *head_msg, Pos pos1, Pos pos2);
+char *save_pattern_file(const World *wrd, const char *file, const char *head_msg, Pos pos1, Pos pos2);
 
 typedef struct Pattern_header
 {

@@ -1,33 +1,33 @@
 #include "engin.h"
 
 
-void Chunk_print(const Chunk *obj)
+void Chunk_print(const Chunk *chunk)
 {
     for (int y = H - 1; y >= 0; y--)
     {
         for (int x = 0; x < W; x++)
         {
-                 if ((obj->arr2D[x][y] & TYPE_MASK) == empty)
+                 if ((chunk->arr2D[x][y] & TYPE_MASK) == empty)
                 printf(".");
-            else if ((obj->arr2D[x][y] & TYPE_MASK) == cable_off)
+            else if ((chunk->arr2D[x][y] & TYPE_MASK) == cable_off)
                 printf("¤");
-            else if ((obj->arr2D[x][y] & TYPE_MASK) == cable_on)
+            else if ((chunk->arr2D[x][y] & TYPE_MASK) == cable_on)
                 printf("X");
-            else if ((obj->arr2D[x][y] & TYPE_MASK) == bridge)
+            else if ((chunk->arr2D[x][y] & TYPE_MASK) == bridge)
                 printf("#");
-            else if ((obj->arr2D[x][y] & TYPE_MASK) == ty_transistor)
+            else if ((chunk->arr2D[x][y] & TYPE_MASK) == ty_transistor)
             {
-                if ((obj->arr2D[x][y] & VARIANT_MASK) == var_off)
+                if ((chunk->arr2D[x][y] & VARIANT_MASK) == var_off)
                     printf("t");
-                else if ((obj->arr2D[x][y] & VARIANT_MASK) == var_o)
+                else if ((chunk->arr2D[x][y] & VARIANT_MASK) == var_o)
                     printf("T");
-                else if ((obj->arr2D[x][y] & VARIANT_MASK) == var_on)
+                else if ((chunk->arr2D[x][y] & VARIANT_MASK) == var_on)
                     printf("O");
             }
-            else if ((obj->arr2D[x][y] & TYPE_MASK) == ty_not_gate)
+            else if ((chunk->arr2D[x][y] & TYPE_MASK) == ty_not_gate)
             {
-                if (obj->parent->state ? (obj->arr2D[x][y] & VARIANT_MASK) == var_o
-                                      : (obj->arr2D[x][y] & VARIANT_MASK) == var_on)
+                if (chunk->parent->state ? (chunk->arr2D[x][y] & VARIANT_MASK) == var_o
+                                      : (chunk->arr2D[x][y] & VARIANT_MASK) == var_on)
                     printf("N");
                 else printf("n");
             }
@@ -36,7 +36,7 @@ void Chunk_print(const Chunk *obj)
             
         }
         /* if (more)
-            Chunk_sec_line_print(obj, y); 
+            Chunk_sec_line_print(chunk, y); 
         else printf("\n"); */
     }
     for (int i = 0; i < W; i++)
@@ -55,9 +55,16 @@ static_assert(down == __OPPOSITE_DIR(up), "down -> up");
 static_assert(left == __OPPOSITE_DIR(right), "left -> right");
 static_assert(right == __OPPOSITE_DIR(left), "right -> left");
 
-Pos_Globale Pos_to_Pos_Globale(Pos pos)
+/* Pos P*os_Globale_to_Pos(P*os_Globale pos)
 {
-    return (Pos_Globale){
+    return (Pos){
+        .x = pos.chunk.x * W + POS_CHUNK_X(pos.cell),
+        .y = pos.chunk.y * H + POS_CHUNK_Y(pos.cell)
+    };
+}
+P*os_Globale Pos_to_P*os_Globale(Pos pos)
+{
+    return (P*os_Globale){
         .chunk = (Pos){
             .x = (pos.x >> 4),
             .y = (pos.y >> 4)
@@ -65,7 +72,9 @@ Pos_Globale Pos_to_Pos_Globale(Pos pos)
         .cell = ((pos.x & 0xf) << 4)
               |  (pos.y & 0xf)
     };
-}
+} */
+
+
 
 World World_make(const char *name)
 {
@@ -136,16 +145,16 @@ Chunk *add_Chunk(World *parent, Pos pos)
     return build->data;
 }
 
-bool erase_Chunk(Chunk *obj)
+bool erase_Chunk(Chunk *chunk)
 {
-    if (!set_Item_chunks_erase(&obj->parent->chunks, (Item_chunks){ .pos =  obj->pos }))
+    if (!set_Item_chunks_erase(&chunk->parent->chunks, (Item_chunks){ .pos =  chunk->pos }))
         return false;
 
     for (Direction dir = up; dir <= left; dir++)
-        if (obj->close_chunks[dir])
-            obj->close_chunks[dir]->close_chunks[opposite_dir(dir)] = NULL;
+        if (chunk->close_chunks[dir])
+            chunk->close_chunks[dir]->close_chunks[opposite_dir(dir)] = NULL;
     
-    alf_Chunk_release(obj->parent->chunk_allocator, obj);
+    alf_Chunk_release(chunk->parent->chunk_allocator, chunk);
     /* TODO: if added set of color unreference it too */
     return true;
 }
@@ -161,61 +170,101 @@ bool erase_Chunk_pos(World *parent, Pos pos)
     return erase_Chunk(item_chunk->data);
 }
 
-// obj{IO} :|
-static Pos_Chunk mouv_in_chunk(Chunk **obj, Pos_Chunk pos, Direction dir)
+static inline Pos_Chunk mouv_in_chunk_up(Chunk **chunk, Pos_Chunk pos)
+{
+    if ((pos & POS_Y_MASK) == H - 1)
+    {
+        *chunk = (*chunk)->close_chunks[up];
+        return (pos & POS_X_MASK) | 0;
+    }
+    return (pos & POS_X_MASK) | ((pos & POS_Y_MASK) + POS_Y_UNIT);
+}
+static inline Pos_Chunk mouv_in_chunk_right(Chunk **chunk, Pos_Chunk pos)
+{
+    if (POS_CHUNK_X(pos) >= W - 1)
+    {
+        *chunk = (*chunk)->close_chunks[right];
+        return 0 | (pos & POS_Y_MASK);
+    }
+    return ((pos & POS_X_MASK) + POS_X_UNIT) | (pos & POS_Y_MASK);
+}
+static inline Pos_Chunk mouv_in_chunk_down(Chunk **chunk, Pos_Chunk pos)
+{
+    if ((pos & POS_Y_MASK) <= 0)
+    {
+        *chunk = (*chunk)->close_chunks[down];
+        return (pos & POS_X_MASK) | (H - 1);
+    }
+    return (pos & POS_X_MASK) | ((pos & POS_Y_MASK) - POS_Y_UNIT);
+}
+static inline Pos_Chunk mouv_in_chunk_left(Chunk **chunk, Pos_Chunk pos)
+{
+    if (POS_CHUNK_X(pos) == 0)
+    {
+        *chunk = (*chunk)->close_chunks[left];
+        return ((W - 1) << 4) | (pos & POS_Y_MASK);
+    }
+    return ((pos & POS_X_MASK) - POS_X_UNIT) | (pos & POS_Y_MASK);
+}
+// chunk{IO} :|
+static inline Pos_Chunk mouv_in_chunk(Chunk **chunk, Pos_Chunk pos, Direction dir)
 {
     if (0) printf("mouv in %p: x%u y%u \tdir: %d\n", 
-        (void*)*obj, 
+        (void*)*chunk, 
         (int)POS_CHUNK_X(pos),
         (int)POS_CHUNK_Y(pos),
         dir
     );
-    assert(obj);
+    assert(chunk);
 
     switch (dir)
     {
     case up:
-        if ((pos & POS_Y_MASK) == H - 1)
-        {
-            *obj = (*obj)->close_chunks[up];
-            return (pos & POS_X_MASK) | 0;
-        }
-        return (pos & POS_X_MASK) | ((pos & POS_Y_MASK) + POS_Y_UNIT);
+        // if ((pos & POS_Y_MASK) == H - 1)
+        // {
+        //     *chunk = (*chunk)->close_chunks[up];
+        //     return (pos & POS_X_MASK) | 0;
+        // }
+        // return (pos & POS_X_MASK) | ((pos & POS_Y_MASK) + POS_Y_UNIT);
+        return mouv_in_chunk_up(chunk, pos); 
     case right:
-        if (POS_CHUNK_X(pos) >= W - 1)
-        {
-            *obj = (*obj)->close_chunks[right];
-            return 0 | (pos & POS_Y_MASK);
-        }
-        return ((pos & POS_X_MASK) + POS_X_UNIT) | (pos & POS_Y_MASK);
+        // if (POS_CHUNK_X(pos) >= W - 1)
+        // {
+        //     *chunk = (*chunk)->close_chunks[right];
+        //     return 0 | (pos & POS_Y_MASK);
+        // }
+        // return ((pos & POS_X_MASK) + POS_X_UNIT) | (pos & POS_Y_MASK);
+        return mouv_in_chunk_right(chunk, pos); 
     case down:
-        if ((pos & POS_Y_MASK) <= 0)
-        {
-            *obj = (*obj)->close_chunks[down];
-            return (pos & POS_X_MASK) | (H - 1);
-        }
-        return (pos & POS_X_MASK) | ((pos & POS_Y_MASK) - POS_Y_UNIT);
+        // if ((pos & POS_Y_MASK) <= 0)
+        // {
+        //     *chunk = (*chunk)->close_chunks[down];
+        //     return (pos & POS_X_MASK) | (H - 1);
+        // }
+        // return (pos & POS_X_MASK) | ((pos & POS_Y_MASK) - POS_Y_UNIT);
+        return mouv_in_chunk_down(chunk, pos);
     case left:
-        if (POS_CHUNK_X(pos) == 0)
-        {
-            *obj = (*obj)->close_chunks[left];
-            return ((W - 1) << 4) | (pos & POS_Y_MASK);
-        }
-        return ((pos & POS_X_MASK) - POS_X_UNIT) | (pos & POS_Y_MASK);
+        // if (POS_CHUNK_X(pos) == 0)
+        // {
+        //     *chunk = (*chunk)->close_chunks[left];
+        //     return ((W - 1) << 4) | (pos & POS_Y_MASK);
+        // }
+        // return ((pos & POS_X_MASK) - POS_X_UNIT) | (pos & POS_Y_MASK);
+        return mouv_in_chunk_left(chunk, pos);
     default:
-        *obj = NULL;
+        *chunk = NULL;
         return pos;
     }
 }
 
 
 
-static void light_cable(Chunk *obj, Pos_Chunk pos, Direction dir)
+static void light_cable(Chunk *chunk, Pos_Chunk pos, Direction dir)
 {
     static int light_pile_height = 0;
     
     if (0) printf("light(%d) %p: x%u y%u \tdir: %d\n", light_pile_height,
-        (void*)obj, 
+        (void*)chunk, 
         (int)POS_CHUNK_X(pos),
         (int)POS_CHUNK_Y(pos),
         dir
@@ -223,53 +272,53 @@ static void light_cable(Chunk *obj, Pos_Chunk pos, Direction dir)
     light_pile_height++;
 
     // not a populated Chunk
-    if (obj == NULL)
+    if (chunk == NULL)
         ;
-    else if ((obj->arr[pos] & TYPE_MASK) == cable_off)
+    else if ((chunk->arr[pos] & TYPE_MASK) == cable_off)
     {
-        obj->arr[pos] = cable_on | (CONNECTION_MASK & obj->arr[pos]);
+        chunk->arr[pos] = cable_on | (CONNECTION_MASK & chunk->arr[pos]);
 
-        da_push(&obj->cables, pos);
+        da_push(&chunk->cables, pos);
 
-        Chunk *tmp = obj;
-        Pos_Chunk next_pos = mouv_in_chunk(&tmp, pos, up);
+        Chunk *tmp = chunk;
+        Pos_Chunk next_pos = mouv_in_chunk_up(&tmp, pos);
         light_cable(tmp, next_pos, up);
-        tmp = obj; next_pos = mouv_in_chunk(&tmp, pos, right);
+        tmp = chunk; next_pos = mouv_in_chunk_right(&tmp, pos);
         light_cable(tmp, next_pos, right);
-        tmp = obj; next_pos = mouv_in_chunk(&tmp, pos, down);
+        tmp = chunk; next_pos = mouv_in_chunk_down(&tmp, pos);
         light_cable(tmp, next_pos, down);
-        tmp = obj; next_pos = mouv_in_chunk(&tmp, pos, left);
+        tmp = chunk; next_pos = mouv_in_chunk_left(&tmp, pos);
         light_cable(tmp, next_pos, left);
 
     }
-    else if ((obj->arr[pos] & TYPE_MASK) == bridge)
+    else if ((chunk->arr[pos] & TYPE_MASK) == bridge)
     {
-        Chunk *tmp = obj;
+        Chunk *tmp = chunk;
         Pos_Chunk next_pos = mouv_in_chunk(&tmp, pos, dir);
         light_cable(tmp, next_pos, dir);
     }
-    else if ((obj->arr[pos] & TYPE_MASK) == ty_transistor)
+    else if ((chunk->arr[pos] & TYPE_MASK) == ty_transistor)
     {
-        if (dir != opposite_dir(obj->arr[pos] & DIRECTION_MASK))
+        if (dir != opposite_dir(chunk->arr[pos] & DIRECTION_MASK))
         {
-            if ((obj->arr[pos] & VARIANT_MASK) == var_off)
+            if ((chunk->arr[pos] & VARIANT_MASK) == var_off)
             {
-                obj->arr[pos] += var_o;
-                da_push(&obj->update, pos);
+                chunk->arr[pos] += var_o;
+                da_push(&chunk->update, pos);
             }
-            else if ((obj->arr[pos] & VARIANT_MASK) == var_o)
+            else if ((chunk->arr[pos] & VARIANT_MASK) == var_o)
             {
-                obj->arr[pos] += var_o;
-                da_push(&obj->light_transistors[!obj->parent->state], pos);
+                chunk->arr[pos] += var_o;
+                da_push(&chunk->light_transistors[!chunk->parent->state], pos);
             }
         }
     }
-    else if ((obj->arr[pos] & TYPE_MASK) == ty_not_gate)
+    else if ((chunk->arr[pos] & TYPE_MASK) == ty_not_gate)
     {
-        if (dir != opposite_dir(obj->arr[pos] & DIRECTION_MASK))
+        if (dir != opposite_dir(chunk->arr[pos] & DIRECTION_MASK))
         {
             if (0) printf("not gate alimented\n");
-            obj->arr[pos] |= !obj->parent->state ? 0b0100 /* var_o */ : 0b1000/* var_on */;
+            chunk->arr[pos] |= !chunk->parent->state ? 0b0100 /* var_o */ : 0b1000/* var_on */;
         }
         else if (0) printf("no flow back\n");
     }
@@ -279,112 +328,107 @@ static void light_cable(Chunk *obj, Pos_Chunk pos, Direction dir)
 
 
 
-void Chunk_cable_tick(Chunk *obj)
+void Chunk_cable_tick(Chunk *chunk)
 {
-    while (obj->cables.size > 0)
+    while (chunk->cables.size > 0)
     {
-        Pos_Chunk pos_cable = da_pop(&obj->cables);
-        obj->arr[pos_cable] = cable_off | (CONNECTION_MASK & obj->arr[pos_cable]);
+        Pos_Chunk pos_cable = da_pop(&chunk->cables);
+        chunk->arr[pos_cable] = cable_off | (CONNECTION_MASK & chunk->arr[pos_cable]);
     }
 }
 
-void Chunk_update_tick(Chunk *obj)
+void Chunk_update_tick(Chunk *chunk)
 {
-    while (obj->update.size > 0)
+    while (chunk->update.size > 0)
     {
-        Pos_Chunk pos = da_pop(&obj->update);
+        Pos_Chunk pos = da_pop(&chunk->update);
         
-        // if (obj->arr[pos] & VARIANT_MASK )  //(obj->arr[pos] - u_transistor_off) % 3)
-            //obj->arr[pos] - (obj->arr[pos] - u_transistor_off) % 3;
+        // if (chunk->arr[pos] & VARIANT_MASK )  //(chunk->arr[pos] - u_transistor_off) % 3)
+            //chunk->arr[pos] - (chunk->arr[pos] - u_transistor_off) % 3;
         // also reinitilize var_on
-        obj->arr[pos] &= ~VARIANT_MASK; 
+        chunk->arr[pos] &= ~VARIANT_MASK; 
     }
 }
 
-void Chunk_light_transistor_tick(Chunk *obj)
+void Chunk_light_transistor_tick(Chunk *chunk)
 {
-    while (obj->light_transistors[obj->parent->state].size > 0)
+    while (chunk->light_transistors[chunk->parent->state].size > 0)
     {
-        Pos_Chunk pos = da_pop(&obj->light_transistors[obj->parent->state]);
-        Chunk *tmp = obj;
+        Pos_Chunk pos = da_pop(&chunk->light_transistors[chunk->parent->state]);
+        Chunk *tmp = chunk;
 
         light_cable(
             tmp, 
-            mouv_in_chunk(&tmp, pos, obj->arr[pos] & DIRECTION_MASK),
-            obj->arr[pos] & DIRECTION_MASK
+            mouv_in_chunk(&tmp, pos, chunk->arr[pos] & DIRECTION_MASK),
+            chunk->arr[pos] & DIRECTION_MASK
         );
     }
 }
 
 
 // 0b 11 00 00
-void Chunk_not_gate_tick(Chunk *obj)
+void Chunk_not_gate_tick(Chunk *chunk)
 {
     // not a 'while' bc the array is readonly
-    foreach_ptr (Pos_Chunk, it, &obj->not_gate)
+    foreach_ptr (Pos_Chunk, it, &chunk->not_gate)
     {
-        assert(obj->parent->state == 0 || obj->parent->state == 1);
-        if (((obj->arr[*it] & VARIANT_MASK) & (obj->parent->state ? var_o : var_on)) == 0)
+        assert(chunk->parent->state == 0 || chunk->parent->state == 1);
+        if (((chunk->arr[*it] & VARIANT_MASK) & (chunk->parent->state ? var_o : var_on)) == 0)
         {
             if (0) printf("not gate light out\n");
             light_cable(
-                obj,
+                chunk,
                 mouv_in_chunk(
-                    &obj, 
+                    &chunk, 
                     *it,
-                    obj->arr[*it] & DIRECTION_MASK
+                    chunk->arr[*it] & DIRECTION_MASK
                 ),
-                obj->arr[*it] & DIRECTION_MASK
+                chunk->arr[*it] & DIRECTION_MASK
             );
         }
-        if (0) printf(" notgate (%02x): %02x\n", *it, obj->arr[*it]);
+        if (0) printf(" notgate (%02x): %02x\n", *it, chunk->arr[*it]);
     }
 }
 
-void World_tick(World *obj)
+void World_tick(World *wrd)
 {
     if (0) {
-        printf("\n\nstart tick (%d):\n", obj->state);
-        // foreach_ptr (Chunk, it, &obj->chunks.items)
-        for_set (Item_chunks, item, &obj->chunks)
+        printf("\n\nstart tick (%d):\n", wrd->state);
+        for_set (Item_chunks, item, &wrd->chunks)
             foreach_ptr (Pos_Chunk, pos, &item->data->not_gate)
                 printf("\tnotgate (%02x): %02x\n", *pos, item->data->arr[*pos]);
     }
     
-    // foreach_ptr (Chunk, it, &obj->chunks.items)
-    //     foreach_ptr (Pos_Chunk, pos, &it->not_gate)
-    //         it->arr[*pos] &= !obj->state ? ~var_o : ~var_on;
-    
-    for_set (Item_chunks, item, &obj->chunks)
+    for_set (Item_chunks, item, &wrd->chunks)
         foreach_ptr (Pos_Chunk, pos, &item->data->not_gate)
             printf("\tnotgate (%02x): %02x\n", *pos, item->data->arr[*pos]);
-    for_set (Item_chunks, item, &obj->chunks)
+    for_set (Item_chunks, item, &wrd->chunks)
         foreach_ptr (Pos_Chunk, pos, &item->data->not_gate)
-            item->data->arr[*pos] &= !obj->state ? ~var_o : ~var_on;
+            item->data->arr[*pos] &= !wrd->state ? ~var_o : ~var_on;
 
     // light off all cable
-    for_set (Item_chunks, item, &obj->chunks)
+    for_set (Item_chunks, item, &wrd->chunks)
         Chunk_cable_tick(item->data);
     
     // light off every transistor (var_o and var_on)
-    for_set (Item_chunks, item, &obj->chunks)
+    for_set (Item_chunks, item, &wrd->chunks)
         Chunk_update_tick(item->data);
     
     // pass current old light transistor
-    for_set (Item_chunks, item, &obj->chunks)
+    for_set (Item_chunks, item, &wrd->chunks)
         Chunk_light_transistor_tick(item->data);
     
     // not gate 
-    for_set (Item_chunks, item, &obj->chunks)
+    for_set (Item_chunks, item, &wrd->chunks)
         Chunk_not_gate_tick(item->data);
 
     if (0) {
         printf("end tick:\n");
-        for_set (Item_chunks, item, &obj->chunks)
+        for_set (Item_chunks, item, &wrd->chunks)
             foreach_ptr (Pos_Chunk, pos, &item->data->not_gate)
                 printf("\tnotgate (%02x): %02x\n", *pos, item->data->arr[*pos]);
     }
-    obj->state = !obj->state;
+    wrd->state = !wrd->state;
 }
 
 static inline bool is_connectable_cell(Cell cell)
@@ -437,9 +481,9 @@ static inline bool update_cells_connections(Chunk *chunk, const Pos_Chunk pos)
     else if ((chunk->arr[pos] & TYPE_MASK) == bridge)
     {
         Chunk *up_chunk = chunk;
-        const Pos_Chunk up_pos = mouv_in_chunk(&up_chunk, pos, up);
+        const Pos_Chunk up_pos = mouv_in_chunk_up(&up_chunk, pos);
         Chunk *down_chunk = chunk;
-        const Pos_Chunk down_pos = mouv_in_chunk(&down_chunk, pos, down);
+        const Pos_Chunk down_pos = mouv_in_chunk_down(&down_chunk, pos);
        
         if (up_chunk && (up_chunk->arr[up_pos] & TYPE_MASK) != empty)
         {
@@ -464,9 +508,9 @@ static inline bool update_cells_connections(Chunk *chunk, const Pos_Chunk pos)
         }
 
         Chunk *left_chunk = chunk;
-        const Pos_Chunk left_pos = mouv_in_chunk(&left_chunk, pos, left);
+        const Pos_Chunk left_pos = mouv_in_chunk_left(&left_chunk, pos);
         Chunk *right_chunk = chunk;
-        const Pos_Chunk right_pos = mouv_in_chunk(&right_chunk, pos, right);
+        const Pos_Chunk right_pos = mouv_in_chunk_right(&right_chunk, pos);
         if (right_chunk && ((right_chunk->arr[right_pos] & TYPE_MASK) != empty))
         {
             if (left_chunk && (left_chunk->arr[left_pos] & TYPE_MASK) != empty)
@@ -610,63 +654,332 @@ void Chunk_delete_cell(Chunk *chunk, Pos_Chunk pos)
     chunk->arr[pos] = empty;
 }
 
-bool Chunk_set_cell(Chunk *obj, Pos_Chunk pos, State value)
+bool Chunk_set_cell(Chunk *chunk, Pos_Chunk pos, State value)
 {
-    if (value == obj->arr[pos])
+    if (value == chunk->arr[pos])
         return true;
     
-    // Cell old_value = obj->arr[pos];
-    Chunk_delete_cell(obj, pos);
-    obj->arr[pos] = value;
+    // Cell old_value = chunk->arr[pos];
+    Chunk_delete_cell(chunk, pos);
+    chunk->arr[pos] = value;
 
     if ((value & TYPE_MASK) == ty_transistor)
     {
         if ((value & VARIANT_MASK) >= var_o)
-            da_push(&obj->update, pos);
+            da_push(&chunk->update, pos);
         if ((value & VARIANT_MASK) == var_on)
-            da_push(&obj->light_transistors[obj->parent->state], pos);
+            da_push(&chunk->light_transistors[chunk->parent->state], pos);
     }
     else if ((value & TYPE_MASK) == ty_not_gate)
-        da_push(&obj->not_gate, pos);
+        da_push(&chunk->not_gate, pos);
     else if ((value & TYPE_MASK) == cable_on)
-        da_push(&obj->cables, pos);
+        da_push(&chunk->cables, pos);
     
-    return update_cells_connections(obj, pos /* , old_value */);
+    return update_cells_connections(chunk, pos);
 }
 
-bool World_set_cell(World *obj, Pos pos_world, Pos_Chunk pos_chunk, State value)
+Chunk *get_Chunk_by_Pos(World *wrd, Pos pos)
 {
-    Item_chunks *item_chunk = set_Item_chunks_get(&obj->chunks, (Item_chunks){ .pos = pos_world });
-    if (item_chunk == NULL && (value & TYPE_MASK) == empty)
-        return true;
-    
-    Chunk *chunk = NULL;
-    if (item_chunk == NULL)
-        chunk = add_Chunk(obj, pos_world);
-    else chunk = item_chunk->data;
+    Item_chunks *item_chunk = set_Item_chunks_get(
+        &wrd->chunks, 
+        (Item_chunks){ .pos = get_chunk_Pos(pos) }
+    );
+    if (!item_chunk)
+        return NULL;
+    return item_chunk->data;
+}
+bool World_set_cell(World *wrd, Pos pos, State value)
+{
+    Chunk *chunk = get_Chunk_by_Pos(wrd, pos);
+    if (chunk == NULL)
+    {
+        if ((value & TYPE_MASK) == empty)
+            return true;
+
+        chunk = add_Chunk(wrd, get_chunk_Pos(pos));
+    }
     assert(chunk);
+    
+    return Chunk_set_cell(chunk, get_cell_pos(pos), value);
+}
+bool World_set_orth_lign_cell(World *wrd, Pos pos1, Pos pos2, State value)
+{
+    if (pos1.x == pos2.x
+     && pos1.y == pos2.y)
+        return World_set_cell(wrd, pos1, value);
 
-    return Chunk_set_cell(chunk, pos_chunk, value);
+    if (pos1.x > pos2.x) SWAP(pos1.x, pos2.x);
+    if (pos1.y > pos2.y) SWAP(pos1.y, pos2.y);
+    
+    Pos chunk_pos1 = get_chunk_Pos(pos1);
+    Pos_Chunk cell_pos1 = get_cell_pos(pos1);
+
+    Item_chunks *item_chunk = set_Item_chunks_get(&wrd->chunks, (Item_chunks){ .pos = chunk_pos1 });
+    Chunk *chunk = (item_chunk == NULL) ? add_Chunk(wrd, chunk_pos1)
+                                        : item_chunk->data;
+    
+    
+    bool res = true;
+    bool axis = ABS(pos1.x - pos2.x) >= ABS(pos1.y - pos2.y); // true -> x
+    assert(axis == 0 || axis == 1);
+
+    if ( axis && pos1.x > pos2.x)
+    {
+        SWAP(pos1, pos2);
+        pos1.x++;
+        pos2.x--;
+    }
+    if (!axis && pos1.y > pos2.y)
+    {
+        SWAP(pos1, pos2);
+        pos1.y++;
+        pos2.y--;
+    }
+
+    
+    Pos_Chunk i = cell_pos1;
+    
+    Chunk *prev_chunk = &(Chunk){ .pos = { chunk->pos.x - axis, chunk->pos.y - !axis } };
+
+    for (int xy =  (axis ? pos1.x : pos1.y);
+             xy <= (axis ? pos2.x : pos2.y);
+        xy++,
+        i = axis ? mouv_in_chunk_right(&chunk, i) : mouv_in_chunk_up(&chunk, i)
+    ) {
+        if (!chunk) chunk = add_Chunk(wrd, (Pos){
+                                            .x = prev_chunk->pos.x +  axis,
+                                            .y = prev_chunk->pos.y + !axis
+                                        }
+        );
+        res = res && Chunk_set_cell(chunk, i, value);
+
+        prev_chunk = chunk;
+    }
+    /* if (ABS(pos1.x - pos2.x) < ABS(pos1.y - pos2.y))
+    {
+        if (pos1.y > pos2.y)
+        {
+            Pos pos_tmp = pos1;
+            pos1 = pos2;
+            pos2 = pos_tmp;
+            pos1.y++;
+            pos2.y--;
+        }
+        Pos_Chunk i = cell_pos1;
+        
+        Chunk *prev_chunk = &(Chunk){ .pos = { chunk->pos.x, chunk->pos.y - 1 } };
+
+        for (int y = pos1.y; y <= pos2.y; y++, i = mouv_in_chunk_up(&chunk, i))
+        {
+            if (!chunk) chunk = add_Chunk(wrd, (Pos){
+                                                .x = prev_chunk->pos.x,
+                                                .y = prev_chunk->pos.y + 1
+                                            }
+            );
+            res = res && Chunk_set_cell(chunk, i, value);
+
+            prev_chunk = chunk;
+        }
+    }
+    else
+    {
+        if (pos1.x > pos2.x)
+        {
+            Pos pos_tmp = pos1;
+            pos1 = pos2;
+            pos2 = pos_tmp;
+            pos1.x++;
+            pos2.x--;
+        }
+        Pos_Chunk i = cell_pos1;
+
+        Chunk *prev_chunk = &(Chunk){ .pos = { chunk->pos.x - 1, chunk->pos.y } };
+
+        for (int x = pos1.x; x <= pos2.x; x++, i = mouv_in_chunk_right(&chunk, i))
+        {
+            if (!chunk) chunk = add_Chunk(wrd, (Pos){
+                                                    .x = prev_chunk->pos.x + 1,
+                                                    .y = prev_chunk->pos.y
+                                                }
+            );
+            res = res && Chunk_set_cell(chunk, i, value);
+
+            prev_chunk = chunk;
+        }
+    }
+     */
+    return res;
 }
 
-void Chunk_free(Chunk *obj)
+// TODO use optimized chunk follow
+bool World_set_lign_cell(World *wrd, Pos pos1, Pos pos2, State value)
+{
+    if (pos1.x == pos2.x
+     && pos1.y == pos2.y)
+        return World_set_cell(wrd, pos1, value);
+
+    // if (pos1.x > pos2.x) SWAP(pos1.x, pos2.x);
+    // if (pos1.y > pos2.y) SWAP(pos1.y, pos2.y);
+    
+    // Pos chunk_pos1 = get_chunk_Pos(pos1);
+    // Pos_Chunk cell_pos1 = get_cell_pos(pos1);
+    // Item_chunks *item_chunk = set_Item_chunks_get(&wrd->chunks, (Item_chunks){ .pos = chunk_pos1 });
+    // Chunk *chunk = (item_chunk == NULL) ? add_Chunk(wrd, chunk_pos1)
+    //                                     : item_chunk->data;
+    
+    bool res = true;
+
+    float dx = ABS(pos1.x - pos2.x);
+    float dy = ABS(pos1.y - pos2.y);
+    
+    int ix = 0;
+    int iy = 0;
+    if (pos1.x < pos2.x)
+        ix = 1;
+    else ix = -1;
+    if (pos1.y < pos2.y)
+        iy = 1;
+    else iy = -1;
+
+    float e = 0;
+    for (int i = 0; i <= dx + dy; i++)
+    {
+        res = res && World_set_cell(wrd, pos1, value);
+        const float e1 = e - dy;
+        const float e2 = e + dx;
+        if (ABS(e1) < ABS(e2))
+        {
+            e = e1;
+            pos1.x += ix;
+        }
+        else
+        {
+            e = e2;
+            pos1.y += iy;
+        }
+    }
+    return res;
+}
+
+
+
+bool Chunk_delete_partial(Chunk *chunk, Pos start, Pos end)
+{
+    if (start.packed == 0 && end.x == W - 1 && end.y == H - 1)
+        erase_Chunk(chunk);
+    
+    assert(chunk);
+    assert(0 <= start.x && start.x < W );
+    assert(0 <= start.y && start.y < H );
+
+    bool res = true;
+
+    for (int cx = start.x; cx <= end.x; cx++)
+        for (int cy = start.y; cy <= end.y; cy++)
+            res = res && Chunk_set_cell(chunk, POS_CHUNK(cx, cy), empty);
+
+    return res;
+}
+
+bool World_delete_area(World *wrd, Pos pos1, Pos pos2)
+{
+    if (pos1.x > pos2.x) SWAP(pos1.x, pos2.x);
+    if (pos1.y > pos2.y) SWAP(pos1.y, pos2.y);
+    
+    Pos chunk_pos1 = get_chunk_Pos(pos1);
+    Pos chunk_pos2 = get_chunk_Pos(pos2);
+    Pos_Chunk cell_pos1 = get_cell_pos(pos1);
+    Pos_Chunk cell_pos2 = get_cell_pos(pos2);
+
+    bool res = true;
+    
+    // AAAA
+    // DEEB
+    // DEEB
+    // CCCC
+    // E
+    // for (int x = chunk_pos1.x + 1; x < chunk_pos1.x; x++)
+    //     for (int y = chunk_pos1.y + 1; y < chunk_pos1.y; y++)
+    //         erase_Chunk_pos(wrd, (Pos){ x, y });
+    
+    
+    
+    Chunk *chunk = UNWRAPE_ITEM_CHUNK(set_Item_chunks_get(&wrd->chunks, (Item_chunks){ .pos = chunk_pos1 }));
+
+    for (int x = chunk_pos1.x; x <= chunk_pos2.x; x++)
+    {
+        for (int y = chunk_pos1.y; y <= chunk_pos2.y; y++)
+        {
+            if (chunk) Chunk_delete_partial(
+                chunk,
+                (Pos){
+                    x == chunk_pos1.x ? POS_CHUNK_X(cell_pos1) : 0,
+                    y == chunk_pos1.y ? POS_CHUNK_Y(cell_pos1) : 0,
+                },
+                (Pos){
+                    x == chunk_pos2.x ? POS_CHUNK_X(cell_pos2) : W - 1,
+                    y == chunk_pos2.y ? POS_CHUNK_Y(cell_pos2) : H - 1,
+                }
+            );
+            // printf("delete in chunk: %i,%i found ", x, y);
+            // if (chunk) printf("%i,%i\n", chunk->pos.x, chunk->pos.y);
+            // else printf("NULL\n");
+
+
+            if (y < chunk_pos2.y)
+            {
+                if (chunk) chunk = chunk->close_chunks[up];
+                else chunk = UNWRAPE_ITEM_CHUNK(set_Item_chunks_get(&wrd->chunks, (Item_chunks){ .pos = (Pos){ x, y + 1 } }));
+            }
+        }
+        if (x < chunk_pos2.x)
+            chunk = UNWRAPE_ITEM_CHUNK(set_Item_chunks_get(&wrd->chunks, (Item_chunks){ .pos = (Pos){ x + 1, chunk_pos1.y } }));
+        
+    }
+    // X
+    /* if (chunk) chunk = chunk->close_chunks[right];
+    else chunk = get_Chunk_by_Pos(wrd, (Pos){ chunk_pos2.x, chunk_pos1.y });
+    if (chunk) res = res && Chunk_delete_partial(chunk, POS_CHUNK_TO_POS(cell_pos1), (Pos){ 15, 0 });
+
+    for (int y = chunk_pos1.y + 1; y < chunk_pos1.y; y++)
+    { // B
+        int x = chunk_pos1.x;
+        
+    }
+    for (int x = chunk_pos1.x + 1; x < chunk_pos1.x; x++)
+    { // C
+        
+    }
+    for (int y = chunk_pos1.y + 1; y < chunk_pos1.y; y++)
+    { // D
+        
+    } 
+     */
+    
+    return res;
+}
+
+
+
+
+void Chunk_free(Chunk *chunk)
 {
     
-    da_free(&obj->light_transistors[0]);
-    da_free(&obj->light_transistors[1]);
-    da_free(&obj->update);
-    da_free(&obj->cables);
-    da_free(&obj->not_gate);
+    da_free(&chunk->light_transistors[0]);
+    da_free(&chunk->light_transistors[1]);
+    da_free(&chunk->update);
+    da_free(&chunk->cables);
+    da_free(&chunk->not_gate);
 }
 void Item_chunks_free(Item_chunks *obj)
 {
     Chunk_free(obj->data);
 }
 
-void World_free(World *obj)
+void World_free(World *wrd)
 {
-    set_Item_chunks_free_fun_ptr(&obj->chunks, Item_chunks_free);
-    alf_Chunk_free(obj->chunk_allocator);
-    free(obj->name);
-    free(obj->chunk_allocator);
+    set_Item_chunks_free_fun_ptr(&wrd->chunks, Item_chunks_free);
+    alf_Chunk_free(wrd->chunk_allocator);
+    free(wrd->name);
+    free(wrd->chunk_allocator);
 }

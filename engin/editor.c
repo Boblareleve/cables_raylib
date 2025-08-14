@@ -100,12 +100,12 @@ static inline uint16_t convert_Cell_to_chars(Cell state, bool tick_state)
     return *(uint16_t*)(char[2]){ '\0', '\0' };
 }
 
-char *save_pattern_file(const World *obj, const char *file, const char *head_msg, Pos pos1, Pos pos2)
+char *save_pattern_file(const World *wrd, const char *file, const char *head_msg, Pos pos1, Pos pos2)
 {
     FILE *file_handel = fopen(file, "w");
 
     Strb text = {0};
-    char *error = save_pattern(obj, &text, head_msg, pos1, pos2);
+    char *error = save_pattern(wrd, &text, head_msg, pos1, pos2);
 
     if (fwrite(text.arr, sizeof(char), text.size, file_handel) != (size_t)text.size)
         error = error ? error : "[ERROR] didn't write all data";
@@ -115,7 +115,7 @@ char *save_pattern_file(const World *obj, const char *file, const char *head_msg
     Strb_free(text);
     return error;
 }
-char *save_pattern(const World *obj, Strb *res, const char *head_msg, Pos pos1, Pos pos2)
+char *save_pattern(const World *wrd, Strb *res, const char *head_msg, Pos pos1, Pos pos2)
 {
     Pos start = {
         .x = pos1.x < pos2.x ? pos1.x : pos2.x,
@@ -135,30 +135,30 @@ char *save_pattern(const World *obj, Strb *res, const char *head_msg, Pos pos1, 
     Strb_catf(res, "%u", height);
     Strb_cat_char(res, '\n');
     
-    Pos_Globale gpos = Pos_to_Pos_Globale((Pos){ start.x, end.y });
     Item_chunks *chunk = set_Item_chunks_get(
-        &obj->chunks, 
-        (Item_chunks){ .pos = gpos.chunk }
+        &wrd->chunks, 
+        (Item_chunks){ .pos = get_chunk_Pos((Pos){ start.x, end.y }) }
     );
     
     for (int cy = end.y; cy >= start.y; cy--)
     {
         for (int cx = start.x; cx <= end.x; cx++)
         {
-            gpos = Pos_to_Pos_Globale((Pos){ cx, cy });
-            if (chunk->pos.packed != gpos.chunk.packed)
+            const Pos current_pos = (Pos){ cx, cy };
+            const Pos chunk_pos = get_chunk_Pos(current_pos);
+            if (!chunk || chunk->pos.packed != chunk_pos.packed)
             {
                 chunk = set_Item_chunks_get(
-                    &obj->chunks, 
-                    (Item_chunks){ .pos = gpos.chunk }
+                    &wrd->chunks, 
+                    (Item_chunks){ .pos = chunk_pos }
                 );
             }
 
-            if (chunk->data == NULL)
+            if (!chunk)
                 Strb_ncat(res, "  ,", 3);
             else
             {
-                uint16_t chars = convert_Cell_to_chars(chunk->data->arr[gpos.cell], obj->state);
+                uint16_t chars = convert_Cell_to_chars(chunk->data->arr[get_cell_pos(current_pos)], wrd->state);
                 if (chars == 0)
                     Strb_ncat(res, "  ,", 3);    
                 else
@@ -261,7 +261,7 @@ Pattern_header get_pattern_header(Strv pattern_string)
     return pattern_parser_header(&pattern_string, &dummy);
 }
 
-bool add_pattern(World *obj, Pos pos, Strv pattern, Strb *res_msg)
+bool add_pattern(World *wrd, Pos pos, Strv pattern, Strb *res_msg)
 {
     if (0 && DEBUG_VALUE)
     {
@@ -297,13 +297,10 @@ bool add_pattern(World *obj, Pos pos, Strv pattern, Strb *res_msg)
         int t = 0;
         for (int x = 0; t < line.size && x < header.width; x++)
         {
-            Pos_Globale gpos = Pos_to_Pos_Globale((Pos){x + pos.x, y + pos.y});
-
             // success if all set_cell success
             function_success &= World_set_cell(
-                obj, 
-                gpos.chunk, 
-                gpos.cell, 
+                wrd,
+                (Pos){x + pos.x, y + pos.y},
                 convert_chars_to_Cell(&line.arr[t])
             );
             t += 3;
@@ -314,13 +311,13 @@ bool add_pattern(World *obj, Pos pos, Strv pattern, Strb *res_msg)
     
     return function_success;
 }
-bool add_pattern_file(World *obj, Pos pos, const char *file, Strb *res_msg)
+bool add_pattern_file(World *wrd, Pos pos, const char *file, Strb *res_msg)
 {
     Strb data_raw_bytes = err_attrib(Strb_read_all(file), 
         err, return false;
     );
     
-    if (!add_pattern(obj, pos, data_raw_bytes.self, res_msg)) 
+    if (!add_pattern(wrd, pos, data_raw_bytes.self, res_msg)) 
     {
         Strb_free(data_raw_bytes);
         return false;
@@ -354,7 +351,7 @@ typedef struct Chunk_Write {
     Cell_data array[W*H];
 } Chunk_Write;
 
-char *save_World(const World *obj, const char *file_name)
+char *save_World(const World *wrd, const char *file_name)
 {
     Strb to_write = {0};
 
@@ -363,11 +360,11 @@ char *save_World(const World *obj, const char *file_name)
         .version = 1,
         .chunk_width  = W,
         .chunk_height = H,
-        .chunk_count = obj->chunks.item_count
+        .chunk_count = wrd->chunks.item_count
     };
     if (!Strb_ncat(&to_write, (char*)&head, sizeof(head))) return "[ERROR] out of memory";
     
-    for_set (Item_chunks, item, &obj->chunks)
+    for_set (Item_chunks, item, &wrd->chunks)
     {
         Strb_reserve(&to_write, sizeof(Chunk_Write));
         Chunk_Write *chunk_data = (Chunk_Write*)&to_write.arr[to_write.size];

@@ -11,15 +11,24 @@ Texture2D load_tex(const char *name)
 
 Texs Texs_make(const char *atlas_name, const char *paste_mouver_name)
 {
-    return (Texs){
+    Texs res = {
         .tex = load_tex(atlas_name),
         .paste_mouver = load_tex(paste_mouver_name),
         .cell_size = W
     };
+
+    SetTextureFilter(res.tex, TEXTURE_FILTER_POINT);
+    // SetTextureFilter(res.tex, TEXTURE_FILTER_BILINEAR);
+    // SetTextureFilter(res.tex, TEXTURE_FILTER_TRILINEAR);       // Trilinear filtering (linear with mipmaps)
+    // SetTextureFilter(res.tex, TEXTURE_FILTER_ANISOTROPIC_4X);  // Anisotropic filtering 4x
+    // SetTextureFilter(res.tex, TEXTURE_FILTER_ANISOTROPIC_8X);  // Anisotropic filtering 8x
+    // SetTextureFilter(res.tex, TEXTURE_FILTER_ANISOTROPIC_16X); // Anisotropic filtering 16x
+
+    return res;
 }
-void Texs_free(Texs *obj)
+void Texs_free(Texs *texs)
 {
-    UnloadTexture(obj->tex);
+    UnloadTexture(texs->tex);
 }
 
 static inline void draw_Texs_Cell_V(const Texs *texs, Cell id, Rectangle pos)
@@ -42,14 +51,14 @@ static inline void draw_Texs_Cell_V(const Texs *texs, Cell id, Rectangle pos)
     );
 }
 
-void Chunk_draw(const Window *win, const Chunk *obj)
+void Chunk_draw(const Window *win, const Chunk *chunk)
 {
-    if (obj == NULL)
+    if (chunk == NULL)
         return ;
-
+    
     Vector2 chunk_pos = (Vector2){
-         obj->pos.x * CHUNK_WORLD_SIZE, 
-        -obj->pos.y * CHUNK_WORLD_SIZE
+         chunk->pos.x * CHUNK_WORLD_SIZE, 
+        -chunk->pos.y * CHUNK_WORLD_SIZE
     };
 
 
@@ -89,7 +98,7 @@ void Chunk_draw(const Window *win, const Chunk *obj)
         {
             draw_Texs_Cell_V(
                 &win->texs,
-                obj->arr2D[x][y],
+                chunk->arr2D[x][y],
                 (Rectangle){
                     .x = current_cell_pos.x,
                     .y = current_cell_pos.y,
@@ -107,14 +116,14 @@ void Chunk_draw(const Window *win, const Chunk *obj)
         DrawTextF("(%d, %d)", 
             chunk_pos.x + 4,
             chunk_pos.y + 4 - CHUNK_WORLD_SIZE,
-            4., PURPLE, obj->pos.x, obj->pos.y
+            4., PURPLE, chunk->pos.x, chunk->pos.y
         );
 }
 
 
 
 
-static void ui_select_draw(const Ui *ui, const Texs *texs)
+static void ui_select_draw(const Ui *ui, const Texs *texs, const float thickness)
 {
     UNUSED(texs);
 
@@ -124,7 +133,7 @@ static void ui_select_draw(const Ui *ui, const Texs *texs)
     );
     DrawRectangleLinesEx(
         ui->select.selection_box,
-        2, 
+        2.0f  * thickness, 
         SELECTION_COLOR_OUTLINE
     );
 
@@ -141,7 +150,7 @@ static void ui_select_draw(const Ui *ui, const Texs *texs)
     }
 }
 
-static void ui_paste_previw_draw(const Ui *ui, const Texs *texs)
+static void ui_paste_previw_draw(const Ui *ui, const Texs *texs, const float thickness)
 {
     DrawRectangleRec(
         ui->select.selection_box,
@@ -149,7 +158,7 @@ static void ui_paste_previw_draw(const Ui *ui, const Texs *texs)
     );
     DrawRectangleLinesEx(
         ui->select.selection_box,
-        2,
+        2.0 * thickness,
         PASTE_SELECTION_COLOR_OUTLINE
     );
     
@@ -166,89 +175,170 @@ static void ui_paste_previw_draw(const Ui *ui, const Texs *texs)
     );
 }
 
-static inline void Ui_draw(const Ui *ui, const Texs *texs, const Camera2D cam)
+static inline void Ui_cam_draw(Ui *ui, const Texs *texs, const Camera2D cam)
 {
-    DrawTextF("[FPS %d]", 10, 10, 24, WHITE, GetFPS());
-    
     StartBodyEnd(BeginMode2D(cam), EndMode2D())
     {
+        const float thickness = fmaxf(1.0f, 1.0f / cam.zoom);
         if (ui->mode == mode_editing)
         { // draw overed cell
-            DrawRectangleLines(
-                    ui->mouse_pos.x * W,
-                -ui->mouse_pos.y * H - H,
-                texs->cell_size,
-                texs->cell_size,
-                WHITE
-            );
+            if (ui->edit.interpolation_mode != interpolation_lign)
+                DrawRectangleLinesEx(
+                    get_rec_from_pos_to_pos(
+                        texs->cell_size,
+                        ui->edit.current_drag_start,
+                        ui->edit.current_drag_end
+                    ), thickness, WHITE
+                );
+            else
+            {
+                DrawRectangleLinesEx(
+                    (Rectangle){
+                        ui->edit.current_drag_end.x * W,
+                        -ui->edit.current_drag_end.y * H - H,
+                        texs->cell_size,
+                        texs->cell_size,
+                    }, thickness, RED
+                );
+                DrawRectangleLinesEx(
+                    (Rectangle){
+                        ui->edit.current_drag_start.x * W,
+                        -ui->edit.current_drag_start.y * H - H,
+                        texs->cell_size,
+                        texs->cell_size,
+                    }, thickness, BLUE
+                );
+            }
         }
         else if (ui->mode == mode_select)
         { // draw selection
             if (ui->select.mode & selection_show_blue) 
-                ui_select_draw(ui, texs);
+                ui_select_draw(ui, texs, thickness);
             else if (ui->select.mode & selection_show_red)
-                ui_paste_previw_draw(ui, texs);
+                ui_paste_previw_draw(ui, texs, thickness);
         }
     }
-    if (ui->mode == mode_editing)
-        draw_Texs_Cell_V(
-            texs,
-            ui->edit.current_state,
-            (Rectangle){
-                .x = 0, .y = 0,
-                .width =  8 * texs->cell_size,
-                .height = 8 * texs->cell_size,
-            }
-        );
+}
+static inline void Ui_draw(const Window *win, Ui *ui, const Texs *texs, const Camera2D cam)
+{
+    char std_fps[64];
+    snprintf(std_fps, sizeof(std_fps), "[FPS %d]", GetFPS());
+    DrawText(std_fps, GetScreenWidth() - MeasureText(std_fps, 24) - 10, 10, 24, WHITE);
+
+    Ui_cam_draw(ui, texs, cam);
+
+    const int padding = 4;
+    const int dim = 32;
+    const Camera2D uicam = { .zoom = 2.0f };
+    StartBodyEnd(BeginMode2D(uicam), EndMode2D())
+    {
+        
+        if (ui->mode == mode_editing)
+        {
+            // currently selected cell
+            
+            const float selected_scale = 4;
+            Rectangle currently_selected_cell_rec = {
+                .x = 6, .y = 6,
+                .width =  selected_scale * texs->cell_size,
+                .height = selected_scale * texs->cell_size,
+            };
+            DrawRectangleRec(currently_selected_cell_rec, win->background_color);
+            
+            Cell cell_to_draw = ui->edit.current_state;
+            if (cell_to_draw == cable_off 
+             || cell_to_draw == cable_on
+            )
+                cell_to_draw = cable_on | UP_MASK | RIGHT_MASK | DOWN_MASK | LEFT_MASK;
+            if ((cell_to_draw & TYPE_MASK) == ty_transistor
+             || (cell_to_draw & TYPE_MASK) == ty_not_gate
+            )
+                cell_to_draw |= var_on;
+
+            draw_Texs_Cell_V(texs, cell_to_draw, currently_selected_cell_rec);
+            
+
+            
+            Rectangle button_bound = (Rectangle){
+                .x = selected_scale * texs->cell_size + 16,
+                .y = padding,
+                .width = dim,
+                .height = dim
+            };
+
+            
+            if (button(ui, uicam, button_bound, "#51#"))
+                ui->edit.interpolation_mode = interpolation_none;
+            button_bound.x += dim + padding;
+            if (button(ui, uicam, button_bound, "#68#"))
+                ui->edit.interpolation_mode = interpolation_orthogonal;
+            button_bound.x += dim + padding;
+            if (button(ui, uicam, button_bound, "#69#"))
+                ui->edit.interpolation_mode = interpolation_lign;
+
+        }
+     
+        
+        Rectangle button_bound = {
+            .x = GetScreenWidth()  / uicam.zoom - (padding * 3 + dim * 3),
+            .y = GetScreenHeight() / uicam.zoom - (padding + dim),
+            .width = dim,
+            .height = dim
+        };
+
+        ui->mode_idle.bound = button_bound;
+        button_bound.x += dim + padding;
+        ui->mode_editing.bound = button_bound;
+        button_bound.x += dim + padding;
+        ui->mode_select.bound = button_bound;
+        
+        foreach_static (i, ui->modes)
+            draw_Button(ui->modes[i]);
+    }
 }
 
-void Window_draw(const Window *obj)
+void Window_draw(const Window *win, Ui *ui)
 {
     int draw_count = 0;
     
-    ClearBackground(DARKGRAY);
-    
-    StartBodyEnd(BeginMode2D(obj->cam), EndMode2D())
-    {
-        const Pos_Globale lu_ws = screen_to_Pos_Globale(
-            obj->cam, 
-            (Vector2){ 0, 0 }
-        );
-        const Pos_Globale rd_ws = screen_to_Pos_Globale(
-            obj->cam, 
-            (Vector2){ GetScreenWidth(), GetScreenHeight() }
-        );
 
-        for (int y =  rd_ws.chunk.y;
-                    y <= lu_ws.chunk.y;
-                    y++
-        ) {
-            for (int x =  lu_ws.chunk.x;
-                        x <= rd_ws.chunk.x;
-                        x++
-            ) {
-                Item_chunks *chunk = set_Item_chunks_get(
-                    &obj->wrd.chunks,
-                    (Item_chunks){ .pos = (Pos){
-                        .x = x,
-                        .y = y
-                    }}
-                );
-                if (chunk)
-                {
-                    Chunk_draw(obj, chunk->data);
-                    draw_count++;
-                }
-                if (CHUNK_POS_VALUE)
-                    DrawTextF("(%d, %d)", 
-                        x * CHUNK_WORLD_SIZE + 4,
-                        -y * CHUNK_WORLD_SIZE + 4 - CHUNK_WORLD_SIZE,
-                        4., PURPLE, x, y
-                    );
-            }
-        }        
+    ClearBackground(win->background_color);
+    static int bmode = 0;
+
     
+    // StartBodyEnd(BeginTextureMode(), EndTextureMode())
+    // StartBodyEnd(BeginBlendMode(bmode), EndBlendMode())
+    {
+        StartBodyEnd(BeginMode2D(win->cam), EndMode2D())
+        {
+            const Pos lu_ws = get_chunk_Pos(screen_to_Pos(win->cam, (Vector2){ 0, 0 }));
+            const Pos rd_ws = get_chunk_Pos(screen_to_Pos(win->cam, (Vector2){ GetScreenWidth(), GetScreenHeight() }));
+    
+            for (int y = rd_ws.y; y <= lu_ws.y; y++)
+            {
+                for (int x = lu_ws.x; x <= rd_ws.x; x++)
+                {
+                    Item_chunks *chunk = set_Item_chunks_get(
+                        &win->wrd.chunks,
+                        (Item_chunks){ .pos = (Pos){ x, y }}
+                    );
+                    if (chunk)
+                    {
+                        Chunk_draw(win, chunk->data);
+                        draw_count++;
+                    }
+                    if (CHUNK_POS_VALUE)
+                        DrawTextF("(%d, %d)", 
+                            x * CHUNK_WORLD_SIZE + 4,
+                            -y * CHUNK_WORLD_SIZE + 4 - CHUNK_WORLD_SIZE,
+                            4., PURPLE, x, y
+                        );
+                }
+            }        
+        
+        }
+        Ui_draw(win, ui, &win->texs, win->cam);
     }
-    Ui_draw(&obj->ui, &obj->texs, obj->cam);
+    bmode = (bmode + IsKeyPressed(KEY_B)) % 4;
 }
 

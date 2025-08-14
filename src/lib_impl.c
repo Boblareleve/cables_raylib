@@ -4,7 +4,8 @@
 #define STRING_FILEIO
 #define SET_IMPLEMENTATION
 #define ALF_IMPLEMENTATION
-#define RAD_IMPLEMENTATION
+#define RAYGUI_IMPLEMENTATION 
+ 
 
 #include <stddef.h>
 #include <assert.h>
@@ -41,3 +42,5 @@ void align_free(void *ptr)
 #include "Str.h"
 #include "print.h"
 #include "sa.h"
+#include "raylib.h"
+#include "raygui.h"
