@@ -182,7 +182,7 @@ static inline void Ui_cam_draw(Ui *ui, const Texs *texs, const Camera2D cam)
         const float thickness = fmaxf(1.0f, 1.0f / cam.zoom);
         if (ui->mode == mode_editing)
         { // draw overed cell
-            if (ui->edit.interpolation_mode != interpolation_lign)
+            if (ui->edit.style_mode != edit_style_lign)
                 DrawRectangleLinesEx(
                     get_rec_from_pos_to_pos(
                         texs->cell_size,
@@ -219,18 +219,42 @@ static inline void Ui_cam_draw(Ui *ui, const Texs *texs, const Camera2D cam)
         }
     }
 }
+static inline void Ui_draw_main_menu(const Window *win, Ui *ui, const Texs *texs, float menu_padding, float menu_button_width, float menu_button_height)
+{
+    Rectangle button_bound = {
+        .x = GetScreenWidth()  /2 / ui->in_game_ui_cam.zoom 
+                - (menu_padding * (int)ceil(1.5) + menu_button_height * 2),
+        .y = GetScreenHeight() /2 / ui->in_game_ui_cam.zoom
+                - (menu_button_width / 2) + 4,
+        .width = menu_button_width,
+        .height = menu_button_height,
+    };
+
+    ui->menu.quit.bounds = button_bound;
+    button_bound.y += menu_button_height + menu_padding;
+    ui->menu.options.bounds = button_bound;
+    button_bound.y += menu_button_height + menu_padding;
+    ui->menu.load_file.bounds = button_bound;
+    button_bound.y += menu_button_height + menu_padding;
+    ui->menu.save_file.bounds = button_bound;
+
+    foreach_static (i, ui->menu.buttons)
+        draw_Button(ui->menu.buttons[i]);
+}
+
 static inline void Ui_draw(const Window *win, Ui *ui, const Texs *texs, const Camera2D cam)
 {
     char std_fps[64];
     snprintf(std_fps, sizeof(std_fps), "[FPS %d]", GetFPS());
     DrawText(std_fps, GetScreenWidth() - MeasureText(std_fps, 24) - 10, 10, 24, WHITE);
 
+
     Ui_cam_draw(ui, texs, cam);
 
     const int padding = 4;
     const int dim = 32;
-    const Camera2D uicam = { .zoom = 2.0f };
-    StartBodyEnd(BeginMode2D(uicam), EndMode2D())
+
+    StartBodyEnd(BeginMode2D(ui->in_game_ui_cam), EndMode2D())
     {
         
         if (ui->mode == mode_editing)
@@ -267,33 +291,71 @@ static inline void Ui_draw(const Window *win, Ui *ui, const Texs *texs, const Ca
             };
 
             
-            if (button(ui, uicam, button_bound, "#51#"))
-                ui->edit.interpolation_mode = interpolation_none;
+            ui->edit.style_normal.bounds = button_bound;
+            //  if (button(ui, uicam, button_bound, "#51#"))
+            //     ui->edit.interpolation_mode = edit_style_normal;
+            
             button_bound.x += dim + padding;
-            if (button(ui, uicam, button_bound, "#68#"))
-                ui->edit.interpolation_mode = interpolation_orthogonal;
+            ui->edit.style_orthogonal.bounds = button_bound;
+            // if (button(ui, uicam, button_bound, "#68#"))
+            //     ui->edit.style_mode = edit_style_orthogonal;
+            
             button_bound.x += dim + padding;
-            if (button(ui, uicam, button_bound, "#69#"))
-                ui->edit.interpolation_mode = interpolation_lign;
+            ui->edit.style_lign.bounds = button_bound;
+            // if (button(ui, uicam, button_bound, "#69#"))
+            //     ui->edit.style_mode = edit_style_lign;
+
+            foreach_static (i, ui->edit.styles)
+                draw_Button(ui->edit.styles[i]);
 
         }
      
-        
-        Rectangle button_bound = {
-            .x = GetScreenWidth()  / uicam.zoom - (padding * 3 + dim * 3),
-            .y = GetScreenHeight() / uicam.zoom - (padding + dim),
-            .width = dim,
-            .height = dim
-        };
+        { // parmanent ui
+            Rectangle button_bound = {
+                .x = GetScreenWidth()  / ui->in_game_ui_cam.zoom - (padding * 3 + dim * 3),
+                .y = GetScreenHeight() / ui->in_game_ui_cam.zoom - (padding + dim),
+                .width = dim,
+                .height = dim
+            };
+    
+            ui->mode_idle.bounds = button_bound;
+            button_bound.x += dim + padding;
+            ui->mode_editing.bounds = button_bound;
+            button_bound.x += dim + padding;
+            ui->mode_select.bounds = button_bound;
+            
+            foreach_static (i, ui->modes)
+                draw_Button(ui->modes[i]);
+        }
+        if (ui->in_main_menu)
+        {
+            DrawRectangle(
+                0, 0,
+                GetScreenWidth(),
+                GetScreenHeight(),
+                ui->menu.background_shade
+            );
 
-        ui->mode_idle.bound = button_bound;
-        button_bound.x += dim + padding;
-        ui->mode_editing.bound = button_bound;
-        button_bound.x += dim + padding;
-        ui->mode_select.bound = button_bound;
-        
-        foreach_static (i, ui->modes)
-            draw_Button(ui->modes[i]);
+            const int menu_padding = 6;
+            const int menu_button_width = 256;
+            const int menu_button_height = 64;
+
+            if (ui->menu.submenu == Submenu_self)
+                Ui_draw_main_menu(win, ui, texs, menu_padding, menu_button_width, menu_button_height);
+            else if (ui->menu.submenu == Submenu_option)
+            {
+                
+            }
+            else if (ui->menu.submenu == Submenu_load_file)
+            {
+
+            }
+            else if (ui->menu.submenu == Submenu_save_file)
+            {
+
+            }
+            else UNREACHABLE("ui.menu.submenu");
+        }
     }
 }
 

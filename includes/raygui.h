@@ -732,7 +732,8 @@ RAYGUIAPI int GuiScrollPanel(Rectangle bounds, const char *text, Rectangle conte
 
 // Basic controls set
 RAYGUIAPI int GuiLabel(Rectangle bounds, const char *text);                                            // Label control
-RAYGUIAPI int GuiButton(Camera2D cam, Rectangle bounds, const char *text);                                           // Button control, returns true when clicked
+RAYGUIAPI int GuiButton(Camera2D cam, Rectangle bounds, const char *text);                             // Button control, returns true when clicked
+RAYGUIAPI void GuiDrawButton(Rectangle bounds, const char *text, int state);                           // mine
 RAYGUIAPI int GuiLabelButton(Rectangle bounds, const char *text);                                      // Label button control, returns true when clicked
 RAYGUIAPI int GuiToggle(Rectangle bounds, const char *text, bool *active);                             // Toggle Button control
 RAYGUIAPI int GuiToggleGroup(Rectangle bounds, const char *text, int *active);                         // Toggle Group control
@@ -1992,6 +1993,22 @@ int GuiLabel(Rectangle bounds, const char *text)
     return result;
 }
 
+
+void GuiDrawButton(Rectangle bounds, const char *text, int state)
+{
+    GuiDrawRectangle(
+        bounds,
+        GuiGetStyle(BUTTON, BORDER_WIDTH),
+        GetColor(GuiGetStyle(BUTTON, BORDER + (state*3))), 
+        GetColor(GuiGetStyle(BUTTON, BASE   + (state*3)))
+    );
+    GuiDrawText(
+        text,
+        GetTextBounds(BUTTON, bounds), 
+        GuiGetStyle(BUTTON, TEXT_ALIGNMENT), 
+        GetColor(GuiGetStyle(BUTTON, TEXT + (state*3)))
+    );
+}
 
 // Button control, returns true when clicked
 int GuiButton(Camera2D cam, Rectangle bounds, const char *text)

@@ -24,10 +24,10 @@
 #include "Str.h"
 #include "print.h"
 #include "sa.h"
+#include "json.h"
 
 
 #include "../engin/engin.h"
-
 
 /* value macro */
 
@@ -115,12 +115,15 @@ typedef struct Texs {
 
 typedef struct Button
 {
-    Rectangle bound;
-    bool hiden;
-    bool active;
-    bool is_pressed;
+    Rectangle bounds;
+    enum {
+        state_normal = 0,
+        state_focused,
+        state_pressed,
+        state_disabled
+    } state;
+
     const char *text;
-    Camera2D used_cam;
     // bool is_in_world_space;
 } Button;
 
@@ -164,9 +167,7 @@ typedef struct Select_ui
     Rectangle selection_box;
 
     enum Select_state {
-        selection_off = 0,
-
-        selection_waiting = 1,
+        selection_waiting = 0,
         
         selection_show_blue = 0x10,
         selection_selecting = selection_show_blue | 0,
@@ -191,11 +192,21 @@ typedef struct Edit_ui
     Cell current_state;
     Direction current_direction;
 
-    enum Edit_interpolation_mode {
-        interpolation_none,
-        interpolation_orthogonal,
-        interpolation_lign
-    } interpolation_mode;
+    enum Edit_edit_style {
+        edit_style_normal,
+        edit_style_orthogonal,
+        edit_style_lign,
+        edit_style_count
+    } style_mode;
+    union {
+        struct {
+            Button style_normal;
+            Button style_orthogonal;
+            Button style_lign;
+        };
+        Button styles[edit_style_count];
+    };
+    
 
     
     Pos drag_start;
@@ -206,6 +217,53 @@ typedef struct Edit_ui
 
 } Edit_ui;
 
+typedef struct Option
+{
+    Json option_json;
+    const char *path_option_file;
+    const char *error_reading_file; // error on non NULL
+} Option;
+
+
+typedef struct Submenu_load_file_ui
+{
+
+} Submenu_load_file_ui;
+
+typedef struct Submenu_save_file_ui
+{
+
+} Submenu_save_file_ui;
+
+typedef struct Menu_ui
+{
+    enum Main_menu_submenu
+    {
+        Submenu_self = 0,
+        Submenu_quit,
+        Submenu_option,
+        Submenu_load_file,
+        Submenu_save_file,
+    } submenu;
+
+    union {
+        struct {
+            Button quit;
+            Button options;
+            Button load_file;
+            Button save_file;
+        };
+        Button buttons[4];
+    };
+
+    const char* current_file_save_path;
+    const char* default_file_save_path;
+
+    Color background_shade;
+
+} Menu_ui;
+
+
 typedef struct Ui
 {
     Camera2D in_game_ui_cam;
@@ -215,8 +273,9 @@ typedef struct Ui
         mode_select,
         mode_count
     } mode;
-    union
-    {
+    bool in_main_menu;
+
+    union {
         struct {
             Button mode_idle;
             Button mode_editing;
@@ -236,6 +295,7 @@ typedef struct Ui
 
     Edit_ui edit;
     Select_ui select;
+    Menu_ui menu;
 } Ui;
 
 
@@ -248,6 +308,7 @@ typedef struct Window
 
     Texs texs;
 
+    Option option;
     Color background_color;
     Ui ui;
 } Window;
@@ -337,12 +398,20 @@ void Texs_free(Texs *texs);
 // can update some ui value (for raygui.h buttons)
 void Window_draw(const Window *wrd, Ui *ui);
 
+Window Window_make(const char *name);
+void Window_free(Window *win);
+
+void quit(Window *win);
 void inputs(Window *win);
 Ui Ui_make(Camera2D cam);
 void Ui_free(Ui *ui);
 
-bool pull_Button(const Ui *ui, Button *button);
+bool pull_Button(Ui *ui, Button *button);
 void draw_Button(Button button);
+
+bool update_options_Json(Window *win, const Json json);
+bool update_options(Window *win);
+
 
 
 

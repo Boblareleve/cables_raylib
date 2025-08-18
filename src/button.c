@@ -1,5 +1,5 @@
 #include "main.h"
-
+#include "raygui.h"
 
 static Rectangle TransformRectangleByCamera2D(Camera2D cam, Rectangle rec)
 {
@@ -11,27 +11,30 @@ static Rectangle TransformRectangleByCamera2D(Camera2D cam, Rectangle rec)
     };
 }
 
-bool pull_Button(const Ui *ui, Button *button)
+bool pull_Button(Ui *ui, Button *button)
 {
-    button->is_pressed = false;
-    
-    if (button->active)
+    if (button->state != state_disabled)
     {
         if (CheckCollisionPointRec(
             GetMousePosition(), 
-            TransformRectangleByCamera2D(button->used_cam, button->bound))
+            TransformRectangleByCamera2D(ui->in_game_ui_cam, button->bounds))
         ) {
-            if (is_mouse_button_released(ui, MOUSE_BUTTON_LEFT))
-                button->is_pressed = true;
+            if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
+                button->state = state_pressed;
+            else button->state = state_focused;
         }
+        else button->state = state_normal;
     }
-    else button->is_pressed = false;
- 
-    
-    return button->is_pressed;
+
+    if (button->state == state_pressed)
+    {
+        ui->is_button_clicked = true;
+        return true;
+    }
+    return false;
 }
 
 void draw_Button(Button button)
 {
-    GuiButton(button.used_cam, button.bound, button.text);
+    GuiDrawButton(button.bounds, button.text, button.state);
 }

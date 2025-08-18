@@ -14,10 +14,17 @@ Window Window_make(const char *name)
 {
     // SetTraceLogLevel(LOG_DEBUG);
     SetTraceLogLevel(LOG_WARNING);
-    // SetTargetFPS(INT32_MAX);
-    SetTargetFPS(60);
 
-    const float ratio = 1.5;
+#ifdef FPS
+    const int fps = FPS < 1 ? INT32_MAX : FPS;
+    printf("FPS %d\n", fps);
+    SetTargetFPS(fps);
+#else
+    printf("FPS: 60\n");
+    SetTargetFPS(60);
+#endif
+
+    const float ratio = 1.;
     InitWindow(1600 / ratio, 900 / ratio, name);
 
     Camera2D cam = (Camera2D){
@@ -81,14 +88,8 @@ int main(void)
         }
     }
     
-    const char *err_save = save_World(&win.wrd, "./save/world1.wrd");
-    if (err_save)
-    {
-        perror("save World");
-        
-        printf(err_save);
-    }
+    quit(&win);
     
-    Window_free(&win);
+    // Window_free(&win);
     return (0);
 }

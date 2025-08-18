@@ -13,98 +13,6 @@
 #endif /* SELECTION_ANIMATION_SPEED */
 
 
-/* void ui_state_print(const Ui *ui)
-{
-    printf("ui state:\n");
-    switch (ui->mode)
-    {
-    case mode_idle:
-        printf("\tui idle\n");
-        break;
-    case mode_editing:
-        printf("\tui editing:\n");
-        printf("\t\tcurrent state %d\n", ui->edit.current_state);
-        printf("\t\tcurrent direction %d\n", ui->edit.current_direction);
-        break;
-    case mode_select:
-        printf("\tui select:\n");
-        switch (ui->select.mode)
-        {
-        case selection_off:
-            UNREACHABLE("OFF");
-            break;
-        case selection_waiting:
-            printf("\t\twaiting to select\n");
-            assert(ui->select.mode_sides_resize == extend_resize_none);
-            break;
-        case selection_selecting:
-            printf("\t\tselecting:\n");
-            printf("\t\tform %i,%i to %i,%i\n", 
-                ui->select.start.x, ui->select.start.y,
-                ui->select.end.x, ui->select.end.y
-            );
-            assert(ui->select.mode_sides_resize == extend_resize_none);
-            break;
-        case selection_selected:
-            printf("\t\tselected:\n");
-            printf("\t\tform %i,%i to %i,%i\n", 
-                ui->select.start.x, ui->select.start.y,
-                ui->select.end.x, ui->select.end.y
-            );
-            assert(ui->select.mode_sides_resize == extend_resize_none);
-            break;
-        case selection_paste_preview:
-            printf("\t\tpaste preview:\n");
-            printf("\t\tfrom %i,%i to %i,%i\n", 
-                ui->select.start.x, ui->select.start.y,
-                ui->select.end.x, ui->select.end.y
-            );
-            assert(ui->select.mode_sides_resize == extend_resize_none);
-            break;
-        case selection_resizing:
-            printf("\t\tresizing:\n");
-            printf("\t\tfrom %i,%i to %i,%i\n", 
-                ui->select.start.x, ui->select.start.y,
-                ui->select.end.x, ui->select.end.y
-            );
-            switch (ui->select.mode_sides_resize)
-            {
-            case extend_resize_up:
-                printf("\t\t\textend resize up\n");
-                break;
-            case extend_resize_right:
-                printf("\t\t\textend resize right\n");
-                break;
-            case extend_resize_down:
-                printf("\t\t\textend resize down\n");
-                break;
-            case extend_resize_left:
-                printf("\t\t\textend resize left\n");
-                break;
-            default:
-                assert(ui->select.mode_sides_resize == extend_resize_none);
-                printf("\t\t\tEXTEND RESIZE NONE\n");
-                break;
-            }
-            break;
-        
-        default:
-            printf("\t\tDEFAULT\n");
-            break;
-        }
-        printf("\t\tclip board character count: %d\n", ui->select.clipboard.size);
-        printf("\t\tclip board msg: \"");
-        Str_print(ui->select.msg_clipboard);
-        printf("\"\n");
-        break;
-    
-    default:
-        break;
-    }
-}
- */
-
-
  
 static inline Vector2 get_new_current(Vector2 current, Vector2 target, float speed)
 {
@@ -308,22 +216,30 @@ void set_to_paste_preview(Ui *ui)
 void edition_input(Window *win)
 {
     Ui *ui = &win->ui;
+
+    if (pull_Button(ui, &ui->edit.style_normal))
+        ui->edit.style_mode = edit_style_normal;
+    if (pull_Button(ui, &ui->edit.style_orthogonal))
+        ui->edit.style_mode = edit_style_orthogonal;
+    if (pull_Button(ui, &ui->edit.style_lign))
+        ui->edit.style_mode = edit_style_lign;
+    
     
     if (IsKeyPressed(KEY_K))
     {
-        ui->edit.interpolation_mode = interpolation_none;
+        ui->edit.style_mode = edit_style_normal;
         printf("interpolation none");
         UPDATE_LINE;
     }
     else if (IsKeyPressed(KEY_SEMICOLON))
     {
-        ui->edit.interpolation_mode = interpolation_lign;
+        ui->edit.style_mode = edit_style_lign;
         printf("interpolation lign (4-ways)");
         UPDATE_LINE;
     }
     else if (IsKeyPressed(KEY_L))
     {
-        ui->edit.interpolation_mode = interpolation_orthogonal;
+        ui->edit.style_mode = edit_style_orthogonal;
         printf("interpolation orthogonal lign");
         UPDATE_LINE;
     }
@@ -379,7 +295,7 @@ void edition_input(Window *win)
                                 )  | ui->edit.current_direction;
     }
 
-    if (ui->edit.interpolation_mode == interpolation_none
+    if (ui->edit.style_mode == edit_style_normal
      && is_mouse_button_down(ui, MOUSE_BUTTON_LEFT)
     ) {
         World_set_lign_cell(
@@ -389,7 +305,7 @@ void edition_input(Window *win)
             ui->edit.current_state
         );
     }
-    if (ui->edit.interpolation_mode == interpolation_orthogonal
+    if (ui->edit.style_mode == edit_style_orthogonal
      && is_mouse_button_released(ui, MOUSE_BUTTON_LEFT)
     ) {
         World_set_orth_lign_cell(
@@ -398,7 +314,7 @@ void edition_input(Window *win)
             ui->edit.current_state
         );
     }
-    if (ui->edit.interpolation_mode == interpolation_lign
+    if (ui->edit.style_mode == edit_style_lign
      && is_mouse_button_released(ui, MOUSE_BUTTON_LEFT)
     ) {
         World_set_lign_cell(
@@ -408,7 +324,7 @@ void edition_input(Window *win)
         );
     }
 
-    if (ui->edit.interpolation_mode == interpolation_orthogonal
+    if (ui->edit.style_mode == edit_style_orthogonal
      && is_mouse_button_down(ui, MOUSE_BUTTON_LEFT)
     ) {
         if (ABS(ui->mouse_pos.x - ui->edit.drag_start.x) 
@@ -422,7 +338,7 @@ void edition_input(Window *win)
                 ui->mouse_pos.y
             };
     }
-    else if (ui->edit.interpolation_mode == interpolation_lign
+    else if (ui->edit.style_mode == edit_style_lign
      && is_mouse_button_down(ui, MOUSE_BUTTON_LEFT))
         ui->edit.drag_end = ui->mouse_pos;
     else ui->edit.drag_start = ui->edit.drag_end 
@@ -513,13 +429,13 @@ void select_input(Window *win)
             ui->select.mode = selection_paste_mouv_preview;
         else
         {
-            ui->select.mode = selection_waiting;
             add_pattern(
                 &win->wrd,
                 ui->select.start,
                 ui->select.clipboard.self,
                 &ui->select.msg_clipboard
             );
+            ui->select.mode = selection_waiting;
         }
     }
     else if (ui->select.mode == selection_paste_mouv_preview
@@ -638,6 +554,63 @@ void simulation_input(Window *win)
 }
 
 
+void quit(Window *win)
+{
+    const char *err_save = save_World(&win->wrd, win->ui.menu.current_file_save_path
+                                                    ? win->ui.menu.current_file_save_path
+                                                    : win->ui.menu.default_file_save_path
+    );
+    if (err_save)
+    {
+        perror("save World");
+        printf(err_save);
+    }
+
+    Window_free(win);
+    exit(0);
+}
+
+
+void main_menu(Window *win)
+{
+
+    if (win->ui.menu.submenu == Submenu_self)
+    {
+        if (IsKeyPressed(KEY_ESCAPE))
+            win->ui.in_main_menu = false;
+        if (pull_Button(&win->ui, &win->ui.menu.quit))
+            quit(win);
+        if (pull_Button(&win->ui, &win->ui.menu.options))
+            win->ui.menu.submenu = Submenu_option;
+        if (pull_Button(&win->ui, &win->ui.menu.load_file))
+            win->ui.menu.submenu = Submenu_load_file;
+        if (pull_Button(&win->ui, &win->ui.menu.save_file))
+            win->ui.menu.submenu = Submenu_save_file;
+    }
+    else if (win->ui.menu.submenu == Submenu_option)
+    {
+        TODO("options");
+        
+        if (IsKeyPressed(KEY_ESCAPE))
+            win->ui.menu.submenu = Submenu_self;
+    }
+    else if (win->ui.menu.submenu == Submenu_load_file)
+    {
+        if (IsKeyPressed(KEY_ESCAPE))
+            win->ui.menu.submenu = Submenu_self;
+        
+        
+    }
+    else if (win->ui.menu.submenu == Submenu_save_file)
+    {
+        if (IsKeyPressed(KEY_ESCAPE))
+            win->ui.menu.submenu = Submenu_self;
+        
+            
+    }
+}
+
+
 
 
 // TODO: 
@@ -645,6 +618,8 @@ void simulation_input(Window *win)
 //     - flickering of the resize bar on the previous bug
 //    FEATURES:
 //     - event queue ?
+//     - Keybinds
+//     - Options
 
 void inputs(Window *win)
 {
@@ -652,104 +627,134 @@ void inputs(Window *win)
     win->ui.mouse_pos = screen_to_Pos(win->cam, GetMousePosition());
     Ui *ui = &win->ui;
 
-    // tmp -> before ui
-    if (IsKeyPressed(KEY_P))
-    {
-        ui->select.mode = selection_waiting;
-        ui->mode = mode_select;
-        printf("mode selection");
-        UPDATE_LINE;
-    }
-    else if (IsKeyPressed(KEY_O))
-    {
-        ui->select.mode = selection_off;
-        ui->mode = mode_editing;
-        printf("mode editing");
-        UPDATE_LINE;
-    }
-    else if (IsKeyPressed(KEY_I))
-    {
-        ui->select.mode = selection_off;
-        ui->mode = mode_idle;
-        printf("mode idle");
-        UPDATE_LINE;
-    }
-
-    
-    // foreach_static (i, win->ui.modes)
-    {
+    if (win->ui.is_button_clicked
+     && IsMouseButtonReleased(MOUSE_BUTTON_LEFT))
         win->ui.is_button_clicked = false;
-        if (pull_Button(&win->ui, &win->ui.mode_idle))
+    
+        
+    if (ui->in_main_menu)
+        main_menu(win);
+    else
+    {
+        if (IsKeyPressed(KEY_ESCAPE))
+            ui->in_main_menu = true;
+
+        // tmp -> before ui
+        if (IsKeyPressed(KEY_P))
         {
-            win->ui.is_button_clicked = true;
-            win->ui.mode = mode_idle;
+            ui->select.mode = selection_waiting;
+            ui->mode = mode_select;
+            printf("mode selection");
+            UPDATE_LINE;
         }
+        else if (IsKeyPressed(KEY_O))
+        {
+            ui->mode = mode_editing;
+            printf("mode editing");
+            UPDATE_LINE;
+        }
+        else if (IsKeyPressed(KEY_I))
+        {
+            ui->mode = mode_idle;
+            printf("mode idle");
+            UPDATE_LINE;
+        }
+    
+        
+        
+        if (pull_Button(&win->ui, &win->ui.mode_idle))
+            win->ui.mode = mode_idle;
         if (pull_Button(&win->ui, &win->ui.mode_editing))
         {
-            win->ui.is_button_clicked = true;
+            ui->select.mode = selection_waiting;
             win->ui.mode = mode_editing;
         }
         if (pull_Button(&win->ui, &win->ui.mode_select))
-        {
-            win->ui.is_button_clicked = true;
             win->ui.mode = mode_select;
-        }
-
+        
+            
+    
+        camera_mouvement_input(win);
+        
+        if (ui->mode == mode_editing)
+            edition_input(win);
+        else if (ui->mode == mode_select)
+            select_input(win);
+        else assert(ui->mode == mode_idle);
+    
+        simulation_input(win);
+    
     }
-    
-
-    camera_mouvement_input(win);
-    
-    if (ui->mode == mode_editing)
-        edition_input(win);
-    else if (ui->mode == mode_select)
-        select_input(win);
-    else assert(ui->mode == mode_idle);
-
-    simulation_input(win);
-
     ui->is_button_clicked = false;
 }
 
 Ui Ui_make(Camera2D cam)
 {
+    SetExitKey(KEY_BACKSLASH);
+
+    const char * file_save_path = "./save/world1.wrd";
     return (Ui){
         .mode = mode_idle,
         .mouse_pos = screen_to_Pos(cam, GetMousePosition()),
         .edit = {
             .current_state = cable_off,
             .current_direction = up,
+            
+            .style_normal = {
+                .text = "#51#",
+                .bounds = {0},
+            },
+            .style_orthogonal = {
+                .text = "#68#",
+                .bounds = {0},
+            },
+            .style_lign = {
+                .text = "#69#",
+                .bounds = {0},
+            }
         },
         .select = {
-            .mode = selection_off,
             .mode_sides_resize = extend_resize_none,
             .clipboard = {0},
             .msg_clipboard = {0}
         },
+        .menu = {
+            .quit = {
+                .text = "quit",
+                .bounds = {0},
+            },
+            .options = {
+                .text = "options",
+                .bounds = {0},
+            },
+            .load_file = {
+                .text = "load",
+                .bounds = {0},
+            },
+            .save_file = {
+                .text = "save",
+                .bounds = {0},
+            },
+            .current_file_save_path = file_save_path,
+            .default_file_save_path = file_save_path,
+            .background_shade = (Color){ 0, 10, 30, 120 } // (Color){ 130, 130, 130, 255 / 4 }
+        },
         .in_game_ui_cam = { .zoom = 2. },
         .mode_idle = {
             .text = "#149#",
-            .active = true,
-            .bound = {0},
-            .used_cam = { .zoom = 2. },
+            .bounds = {0},
         },
         .mode_editing = {
             .text = "#22#", // 23 for big one
-            .active = true,
-            .bound = {0},
-            .used_cam = { .zoom = 2. },
+            .bounds = {0},
         },
         .mode_select = {
             .text = "#33#",
-            .active = true,
-            .bound = {0},
-            .used_cam = { .zoom = 2. },
+            .bounds = {0},
         },
         .mode_mouv_drag = {
             .text = "#19#",
-            .active = true,
-            .bound = {0},
-            .used_cam = { .zoom = 2. },
+            .bounds = {0},
         },
     };
 }
