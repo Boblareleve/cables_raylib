@@ -1,23 +1,16 @@
 #include "main.h"
 
-
-Texture2D load_tex(const char *name)
-{
-    Texture2D res = LoadTexture(name);
-    assert(IsTextureValid(res));
-    return res;
-}
-
-
 Texs Texs_make(const char *atlas_name, const char *paste_mouver_name)
 {
     Texs res = {
-        .tex = load_tex(atlas_name),
-        .paste_mouver = load_tex(paste_mouver_name),
+        .atlas = rd_load_texture(atlas_name, 0),
+        .paste_mouver = rd_load_texture(paste_mouver_name, 1),
         .cell_size = W
     };
+    foreach_static (size_t, i, res.tex_array)
+        assert(res.tex_array[i].id);
 
-    SetTextureFilter(res.tex, TEXTURE_FILTER_POINT);
+    // SetTextureFilter(res.atlas, TEXTURE_FILTER_POINT);
     // SetTextureFilter(res.tex, TEXTURE_FILTER_BILINEAR);
     // SetTextureFilter(res.tex, TEXTURE_FILTER_TRILINEAR);       // Trilinear filtering (linear with mipmaps)
     // SetTextureFilter(res.tex, TEXTURE_FILTER_ANISOTROPIC_4X);  // Anisotropic filtering 4x
@@ -28,379 +21,218 @@ Texs Texs_make(const char *atlas_name, const char *paste_mouver_name)
 }
 void Texs_free(Texs *texs)
 {
-    UnloadTexture(texs->tex);
+    foreach_static (size_t, i, texs->tex_array)
+        glDeleteTextures(TEXS_TEXTURE_COUNT, &texs->tex_array[i].id);
 }
 
-static inline void draw_Texs_Cell_V(const Texs *texs, Cell id, Rectangle pos)
-{
-    if ((id & TYPE_MASK) == empty)
-        return ;
 
-    DrawTexturePro(
-        texs->tex,
-        (Rectangle){
-            .x = texs->cell_size * (id),
-            .y = 0, //texs->cell_size * TEX_CHUNK_Y_ID(id),
-            .width = texs->cell_size,
-            .height = texs->cell_size
-        },
-        pos,
-        (Vector2){0},   // texs->cell_size / 2, texs->cell_size / 2}, 
-        0,              //direction_to_rotation[DIRECTION_MASK & id], 
-        WHITE
+static inline void Chunk_push(Window *win, Chunk *chunk)
+{
+    chunk->render.index_buffer = win->rd.chunk_texture.size;
+
+    da_push_array(&win->rd.chunk_texture, chunk->arr);
+    static_assert(sizeof(chunk->arr) == 256);
+    static_assert(sizeof(win->rd.chunk_texture.arr[0]) == 256);
+    
+    // da_push_array(&win->rd.vertices, ((Vec24){
+    //     POS_TO_VEC2(chunk->pos), 
+    //     POS_TO_VEC2(chunk->pos),
+    //     POS_TO_VEC2(chunk->pos),
+    //     POS_TO_VEC2(chunk->pos)
+    // }));
+    da_push(&win->rd.vertices, POS_TO_VEC2(chunk->pos));
+    static_assert(sizeof(chunk->pos) == 4 * 2);
+}
+
+// offset, size (index) 
+static inline void Chunk_push_gpu(Window *win, int offset, int size)
+{
+    // glMapBufferRange with the GL_MAP_UNSYNCHRONIZED_BIT
+
+    glBindBuffer(GL_ARRAY_BUFFER, win->rd.VBO);
+    glBufferSubData(
+        GL_ARRAY_BUFFER,
+        offset * sizeof(win->rd.vertices.arr[0]),
+        size   * sizeof(win->rd.vertices.arr[0]),
+        &win->rd.vertices.arr[offset]
+    );
+    glBindBuffer(GL_TEXTURE_BUFFER, win->rd.TBO);
+    glBufferSubData(
+        GL_TEXTURE_BUFFER,
+        offset * sizeof(win->rd.chunk_texture.arr[0]),
+        size   * sizeof(win->rd.chunk_texture.arr[0]),
+        &win->rd.chunk_texture.arr[offset]
     );
 }
 
-void Chunk_draw(const Window *win, const Chunk *chunk)
+void push_chunk_to_draw(Window *win, Pos upper_left_pos, Pos lower_right_pos, int *draw_count)
 {
-    if (chunk == NULL)
-        return ;
+    *draw_count = 0;
     
-    Vector2 chunk_pos = (Vector2){
-         chunk->pos.x * CHUNK_WORLD_SIZE, 
-        -chunk->pos.y * CHUNK_WORLD_SIZE
-    };
 
-
-    if (CHUNK_GRID_VALUE)
+    for (int y = lower_right_pos.y; y <= upper_left_pos.y; y++)
     {
-        DrawRectangleLinesEx(
-            (Rectangle){
-                chunk_pos.x, 
-                chunk_pos.y - CHUNK_WORLD_SIZE, 
-                CHUNK_WORLD_SIZE, 
-                CHUNK_WORLD_SIZE
-            }, 
-            1, RED
-        );
-        for (int row = 1; row < H; row++)
-        DrawLineEx(
-            (Vector2){chunk_pos.x,                    chunk_pos.y - CHUNK_WORLD_SIZE + row * win->texs.cell_size },
-            (Vector2){chunk_pos.x + CHUNK_WORLD_SIZE, chunk_pos.y - CHUNK_WORLD_SIZE + row * win->texs.cell_size },
-            .5, RED
-        );
-        for (int col = 1; col < H; col++)
-        DrawLineEx(
-            (Vector2){chunk_pos.x + col * win->texs.cell_size, chunk_pos.y },
-            (Vector2){chunk_pos.x + col * win->texs.cell_size, chunk_pos.y - CHUNK_WORLD_SIZE },
-            1, RED
-        );
-    }
-    
-    
-    Vector2 current_cell_pos = (Vector2){
-        .x = chunk_pos.x,
-        .y = chunk_pos.y - CHUNK_WORLD_SIZE
-    };
-    for (int y = H - 1; y >= 0; y--)
-    {
-        for (int x = 0; x < W; x++)
+        for (int x = upper_left_pos.x; x <= lower_right_pos.x; x++)
         {
-            draw_Texs_Cell_V(
-                &win->texs,
-                chunk->arr2D[x][y],
-                (Rectangle){
-                    .x = current_cell_pos.x,
-                    .y = current_cell_pos.y,
-                    .width =  CHUNK_WORLD_SIZE / W,
-                    .height = CHUNK_WORLD_SIZE / H
-                }
+            // TODO use graph
+            Item_chunks *chunk = set_Item_chunks_get(
+                &win->wrd.chunks,
+                (Item_chunks){ .pos = (Pos){ x, y }}
             );
-            current_cell_pos.x += win->texs.cell_size;
-        }
-        current_cell_pos.x = chunk_pos.x;
-        current_cell_pos.y += win->texs.cell_size;
-    }
-
-    if (CHUNK_POS_VALUE)
-        DrawTextF("(%d, %d)", 
-            chunk_pos.x + 4,
-            chunk_pos.y + 4 - CHUNK_WORLD_SIZE,
-            4., PURPLE, chunk->pos.x, chunk->pos.y
-        );
-}
-
-
-
-
-static void ui_select_draw(const Ui *ui, const Texs *texs, const float thickness)
-{
-    UNUSED(texs);
-
-    DrawRectangleRec(
-        ui->select.selection_box,
-        SELECTION_COLOR
-    );
-    DrawRectangleLinesEx(
-        ui->select.selection_box,
-        2.0f  * thickness, 
-        SELECTION_COLOR_OUTLINE
-    );
-
-    for (Direction dir = 0; dir < (ssize_t)ARRAY_LEN(ui->select.sides_vertices); dir++)
-    {
-        if (
-            ((dir == up   || dir == down ) && (ui->select.mode_extend_sides & extend_sides_horizontal))
-         || ((dir == left || dir == right) && (ui->select.mode_extend_sides & extend_sides_vertical))
-        )
-            DrawRectangleRec(
-                ui->select.sides_vertices[dir], 
-                SELECTION_COLOR_OUTLINE
-            );
-    }
-}
-
-static void ui_paste_previw_draw(const Ui *ui, const Texs *texs, const float thickness)
-{
-    DrawRectangleRec(
-        ui->select.selection_box,
-        PASTE_SELECTION_COLOR
-    );
-    DrawRectangleLinesEx(
-        ui->select.selection_box,
-        2.0 * thickness,
-        PASTE_SELECTION_COLOR_OUTLINE
-    );
-    
-    DrawTexturePro(texs->paste_mouver,
-        (Rectangle){
-            .x = 0, 
-            .y = 0, 
-            .width = texs->paste_mouver.width, 
-            .height = texs->paste_mouver.height
-        },
-        ui->select.paste_vertices,
-        (Vector2){0},
-        0, PASTE_SELECTION_COLOR_OUTLINE
-    );
-}
-
-static inline void Ui_cam_draw(Ui *ui, const Texs *texs, const Camera2D cam)
-{
-    StartBodyEnd(BeginMode2D(cam), EndMode2D())
-    {
-        const float thickness = fmaxf(1.0f, 1.0f / cam.zoom);
-        if (ui->mode == mode_editing)
-        { // draw overed cell
-            if (ui->edit.style_mode != edit_style_lign)
-                DrawRectangleLinesEx(
-                    get_rec_from_pos_to_pos(
-                        texs->cell_size,
-                        ui->edit.current_drag_start,
-                        ui->edit.current_drag_end
-                    ), thickness, WHITE
-                );
-            else
+            if (chunk && chunk->data)
             {
-                DrawRectangleLinesEx(
-                    (Rectangle){
-                        ui->edit.current_drag_end.x * W,
-                        -ui->edit.current_drag_end.y * H - H,
-                        texs->cell_size,
-                        texs->cell_size,
-                    }, thickness, RED
-                );
-                DrawRectangleLinesEx(
-                    (Rectangle){
-                        ui->edit.current_drag_start.x * W,
-                        -ui->edit.current_drag_start.y * H - H,
-                        texs->cell_size,
-                        texs->cell_size,
-                    }, thickness, BLUE
-                );
-            }
-        }
-        else if (ui->mode == mode_select)
-        { // draw selection
-            if (ui->select.mode & selection_show_blue) 
-                ui_select_draw(ui, texs, thickness);
-            else if (ui->select.mode & selection_show_red)
-                ui_paste_previw_draw(ui, texs, thickness);
-        }
-    }
-}
-static inline void Ui_draw_main_menu(const Window *win, Ui *ui, const Texs *texs, float menu_padding, float menu_button_width, float menu_button_height)
-{
-    Rectangle button_bound = {
-        .x = GetScreenWidth()  /2 / ui->in_game_ui_cam.zoom 
-                - (menu_padding * (int)ceil(1.5) + menu_button_height * 2),
-        .y = GetScreenHeight() /2 / ui->in_game_ui_cam.zoom
-                - (menu_button_width / 2) + 4,
-        .width = menu_button_width,
-        .height = menu_button_height,
-    };
-
-    ui->menu.quit.bounds = button_bound;
-    button_bound.y += menu_button_height + menu_padding;
-    ui->menu.options.bounds = button_bound;
-    button_bound.y += menu_button_height + menu_padding;
-    ui->menu.load_file.bounds = button_bound;
-    button_bound.y += menu_button_height + menu_padding;
-    ui->menu.save_file.bounds = button_bound;
-
-    foreach_static (i, ui->menu.buttons)
-        draw_Button(ui->menu.buttons[i]);
-}
-
-static inline void Ui_draw(const Window *win, Ui *ui, const Texs *texs, const Camera2D cam)
-{
-    char std_fps[64];
-    snprintf(std_fps, sizeof(std_fps), "[FPS %d]", GetFPS());
-    DrawText(std_fps, GetScreenWidth() - MeasureText(std_fps, 24) - 10, 10, 24, WHITE);
-
-
-    Ui_cam_draw(ui, texs, cam);
-
-    const int padding = 4;
-    const int dim = 32;
-
-    StartBodyEnd(BeginMode2D(ui->in_game_ui_cam), EndMode2D())
-    {
-        
-        if (ui->mode == mode_editing)
-        {
-            // currently selected cell
-            
-            const float selected_scale = 4;
-            Rectangle currently_selected_cell_rec = {
-                .x = 6, .y = 6,
-                .width =  selected_scale * texs->cell_size,
-                .height = selected_scale * texs->cell_size,
-            };
-            DrawRectangleRec(currently_selected_cell_rec, win->background_color);
-            
-            Cell cell_to_draw = ui->edit.current_state;
-            if (cell_to_draw == cable_off 
-             || cell_to_draw == cable_on
-            )
-                cell_to_draw = cable_on | UP_MASK | RIGHT_MASK | DOWN_MASK | LEFT_MASK;
-            if ((cell_to_draw & TYPE_MASK) == ty_transistor
-             || (cell_to_draw & TYPE_MASK) == ty_not_gate
-            )
-                cell_to_draw |= var_on;
-
-            draw_Texs_Cell_V(texs, cell_to_draw, currently_selected_cell_rec);
-            
-
-            
-            Rectangle button_bound = (Rectangle){
-                .x = selected_scale * texs->cell_size + 16,
-                .y = padding,
-                .width = dim,
-                .height = dim
-            };
-
-            
-            ui->edit.style_normal.bounds = button_bound;
-            //  if (button(ui, uicam, button_bound, "#51#"))
-            //     ui->edit.interpolation_mode = edit_style_normal;
-            
-            button_bound.x += dim + padding;
-            ui->edit.style_orthogonal.bounds = button_bound;
-            // if (button(ui, uicam, button_bound, "#68#"))
-            //     ui->edit.style_mode = edit_style_orthogonal;
-            
-            button_bound.x += dim + padding;
-            ui->edit.style_lign.bounds = button_bound;
-            // if (button(ui, uicam, button_bound, "#69#"))
-            //     ui->edit.style_mode = edit_style_lign;
-
-            foreach_static (i, ui->edit.styles)
-                draw_Button(ui->edit.styles[i]);
-
-        }
-     
-        { // parmanent ui
-            Rectangle button_bound = {
-                .x = GetScreenWidth()  / ui->in_game_ui_cam.zoom - (padding * 3 + dim * 3),
-                .y = GetScreenHeight() / ui->in_game_ui_cam.zoom - (padding + dim),
-                .width = dim,
-                .height = dim
-            };
-    
-            ui->mode_idle.bounds = button_bound;
-            button_bound.x += dim + padding;
-            ui->mode_editing.bounds = button_bound;
-            button_bound.x += dim + padding;
-            ui->mode_select.bounds = button_bound;
-            
-            foreach_static (i, ui->modes)
-                draw_Button(ui->modes[i]);
-        }
-        if (ui->in_main_menu)
-        {
-            DrawRectangle(
-                0, 0,
-                GetScreenWidth(),
-                GetScreenHeight(),
-                ui->menu.background_shade
-            );
-
-            const int menu_padding = 6;
-            const int menu_button_width = 256;
-            const int menu_button_height = 64;
-
-            if (ui->menu.submenu == Submenu_self)
-                Ui_draw_main_menu(win, ui, texs, menu_padding, menu_button_width, menu_button_height);
-            else if (ui->menu.submenu == Submenu_option)
-            {
-                
-            }
-            else if (ui->menu.submenu == Submenu_load_file)
-            {
-
-            }
-            else if (ui->menu.submenu == Submenu_save_file)
-            {
-
-            }
-            else UNREACHABLE("ui.menu.submenu");
-        }
-    }
-}
-
-void Window_draw(const Window *win, Ui *ui)
-{
-    int draw_count = 0;
-    
-
-    ClearBackground(win->background_color);
-    static int bmode = 0;
-
-    
-    // StartBodyEnd(BeginTextureMode(), EndTextureMode())
-    // StartBodyEnd(BeginBlendMode(bmode), EndBlendMode())
-    {
-        StartBodyEnd(BeginMode2D(win->cam), EndMode2D())
-        {
-            const Pos lu_ws = get_chunk_Pos(screen_to_Pos(win->cam, (Vector2){ 0, 0 }));
-            const Pos rd_ws = get_chunk_Pos(screen_to_Pos(win->cam, (Vector2){ GetScreenWidth(), GetScreenHeight() }));
-    
-            for (int y = rd_ws.y; y <= lu_ws.y; y++)
-            {
-                for (int x = lu_ws.x; x <= rd_ws.x; x++)
+                (*draw_count)++;
+                if (chunk->data->render.index_buffer == -1)
                 {
-                    Item_chunks *chunk = set_Item_chunks_get(
-                        &win->wrd.chunks,
-                        (Item_chunks){ .pos = (Pos){ x, y }}
-                    );
-                    if (chunk)
-                    {
-                        Chunk_draw(win, chunk->data);
-                        draw_count++;
-                    }
-                    if (CHUNK_POS_VALUE)
-                        DrawTextF("(%d, %d)", 
-                            x * CHUNK_WORLD_SIZE + 4,
-                            -y * CHUNK_WORLD_SIZE + 4 - CHUNK_WORLD_SIZE,
-                            4., PURPLE, x, y
-                        );
+                    chunk->data->render.index_buffer = win->rd.chunks.size;
+                    da_push(&win->rd.chunks, chunk->data);
                 }
-            }        
-        
+                
+                // Chunk_draw(win, chunk->data);
+            }
+            // if (CHUNK_POS_VALUE)
+            //     DrawTextF("(%d, %d)", 
+            //         x * CHUNK_WORLD_SIZE + 4,
+            //         -y * CHUNK_WORLD_SIZE + 4 - CHUNK_WORLD_SIZE,
+            //         4., PURPLE, x, y
+            //     );
         }
-        Ui_draw(win, ui, &win->texs, win->cam);
     }
-    bmode = (bmode + IsKeyPressed(KEY_B)) % 4;
+}
+void reset_chunk_to_draw(Window *win)
+{
+    foreach_ptr (Chunk *, chunk, &win->rd.chunks)
+        (*chunk)->render.index_buffer = -1;
+    
+    win->rd.chunks.size = 0;
+    win->rd.vertices.size = 0;
+    win->rd.chunk_texture.size = 0;
+}
+
+
+void World_draw(Window *win)
+{
+    const Pos lu_ws = get_chunk_Pos(screen_to_Pos(win->rd.cam, (Vec2){0, 0}));
+    Camera_print(win->rd.cam);
+    const Pos TMP = screen_to_Pos(win->rd.cam, (Vec2){0, 0});
+    printf("{0,0} to screen %d,%d\n", TMP.x, TMP.y);
+
+    const Pos rd_ws = get_chunk_Pos(screen_to_Pos(win->rd.cam, (Vec2){ win->render->screen_width, win->render->screen_height }));
+    printf("form chunk %d,%d to %d,%d\n", 
+        lu_ws.x,
+        lu_ws.y,
+        rd_ws.x,
+        rd_ws.y
+    );
+
+    assert(win->rd.chunk_texture.size == win->rd.vertices.size);
+    assert(win->rd.chunk_texture.size == win->rd.chunks.size);
+    
+    // static da_ptr_Chunk to_draw_chunk = {0};
+    int draw_count = 0;
+    push_chunk_to_draw(win, lu_ws, rd_ws, &draw_count);
+    assert(win->rd.chunks.size <= draw_count);
+    
+    // draw_count -> how many chunk I should draw (min)
+    // to_draw_chunk -> how many chunk I the previous tick 
+    // win->rd.vertices.size -> how many chunk I draw (might be reduce in the vertex shader)
+    // win->rd.max_visible_chunk -> the numbre of chunk I should draw MAX
+
+    // if too many for buffer or 50% + chunk are not visible
+    if (win->rd.chunks.size >= (double)win->rd.max_visible_chunk
+     || (double)draw_count < 0.5 * win->rd.chunks.size
+    ) {
+        reset_chunk_to_draw(win);
+        
+        // maybe will cause lag spike
+        for (int y = rd_ws.y; y <= lu_ws.y; y++)
+            for (int x = lu_ws.x; x <= rd_ws.x; x++)
+            {
+                Item_chunks *chunk = set_Item_chunks_get(
+                    &win->wrd.chunks,
+                    (Item_chunks){ .pos = (Pos){ x, y }}
+                );
+                if (chunk) Chunk_push(win, chunk->data);
+            }
+        
+        Chunk_push_gpu(win, 0, win->rd.vertices.size);
+    }
+    else 
+    {
+        int save_index = win->rd.chunk_texture.size;
+        assert(win->rd.chunk_texture.size == win->rd.vertices.size);
+
+        for (int i = save_index; i < win->rd.chunks.size; i++)
+            Chunk_push(win, win->rd.chunks.arr[i]);
+
+        Chunk_push_gpu(win, save_index, win->rd.chunks.size - save_index);
+    }
+    printf("chunk to draw: %d\n", win->rd.chunks.size);
+}
+
+void Window_draw(Window *win)
+{
+    if (1)
+    {
+        if (win->rd.vertices.size != 1 || win->rd.chunk_texture.size != 1)
+        {
+            win->rd.vertices.size = 0;
+            win->rd.chunk_texture.size = 0;
+            da_push_zero(&win->rd.vertices);
+            // da_push(&win->rd.vertices, ((Vec2){ 1, 0 }));
+            da_push_zero(&win->rd.chunk_texture);
+            // da_push_zero(&win->rd.chunk_texture);
+        }
+        
+        const int offset = 0;
+        const int size = 1;
+        glBindBuffer(GL_ARRAY_BUFFER, win->rd.VBO);
+        glBufferSubData(
+            GL_ARRAY_BUFFER,
+            offset * sizeof(win->rd.vertices.arr[0]),
+            size   * sizeof(win->rd.vertices.arr[0]),
+            &win->rd.vertices.arr[offset]
+        );
+        glBindBuffer(GL_TEXTURE_BUFFER, win->rd.TBO);
+        glBufferSubData(
+            GL_TEXTURE_BUFFER,
+            offset * sizeof(win->rd.chunk_texture.arr[0]),
+            size   * sizeof(win->rd.chunk_texture.arr[0]),
+            &win->rd.chunk_texture.arr[offset]
+        );
+    }
+    else
+    {
+        reset_chunk_to_draw(win);
+
+        for_set (Item_chunks, item, &win->wrd.chunks)
+        {
+            if (item && item->data)
+                Chunk_push(win, item->data);
+            else printf("set NULL\n");
+        }
+        Chunk_push_gpu(win, 0, win->rd.vertices.size);
+
+        assert(win->rd.vertices.size == win->rd.chunk_texture.size);
+        assert(win->rd.vertices.size <= 3);
+    }
+
+    // World_draw(win);
+    // Ui_draw(win);
+
+    {
+        glUseProgram(win->rd.shader.shader_program);
+        glBindVertexArray(win->rd.VAO);
+        glBindBuffer(GL_ARRAY_BUFFER, win->rd.VBO);
+        glDrawArrays(GL_POINTS, 0, win->rd.vertices.size);
+        {
+            da_print(&win->rd.vertices, v2_print);
+            printf("cam: %s zoom %f\n", v2_sprint(win->rd.cam.target), win->rd.cam.zoom);
+            print_buffer_size = 0;
+            assert(win->rd.vertices.size == 1);
+        }
+        assert(glGetError() == GL_NO_ERROR);
+        // printf("draw %d points\n", win->rd.vertices.size);
+    }
 }
 

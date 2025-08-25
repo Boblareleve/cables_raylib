@@ -14,11 +14,11 @@
 
 
  
-static inline Vector2 get_new_current(Vector2 current, Vector2 target, float speed)
+static inline Vec2 get_new_current(Vec2 current, Vec2 target, float speed)
 {
-    Vector2 res = {
-        current.x + speed * (target.x - current.x) * GetFrameTime(),
-        current.y + speed * (target.y - current.y) * GetFrameTime()
+    Vec2 res = {
+        current.x + speed * (target.x - current.x) * rd_get_delta_time(),
+        current.y + speed * (target.y - current.y) * rd_get_delta_time()
     };
     // to avoid jigle 
     if (current.x < target.x && res.x > target.x)
@@ -36,8 +36,8 @@ void update_current_select(Window *win)
 {
     Ui *ui = &win->ui;
 
-    const Vector2 target_start = POS_TO_VECTOR2(win->ui.select.start);
-    const Vector2 target_end   = POS_TO_VECTOR2(win->ui.select.end  );
+    const Vec2 target_start = POS_TO_VEC2(win->ui.select.start);
+    const Vec2 target_end   = POS_TO_VEC2(win->ui.select.end  );
 
     // every 100ms  -> frame_delta = 0.1 s
     // /2 distance to target
@@ -66,13 +66,13 @@ void update_current_select(Window *win)
 
         if (ui->select.mode_extend_sides & extend_sides_horizontal)
         {
-            ui->select.sides_vertices[up] = (Rectangle){
+            ui->select.sides_vertices[up] = (Rect){
                 .x = ui->select.selection_box.x + cell_size,
                 .y = ui->select.selection_box.y + padding,
                 .width = ui->select.selection_box.width - 2* cell_size,
                 .height = width,
             };
-            ui->select.sides_vertices[down] = (Rectangle){
+            ui->select.sides_vertices[down] = (Rect){
                 .x = ui->select.selection_box.x + cell_size,
                 .y = ui->select.selection_box.y + ui->select.selection_box.height 
                                                 - padding - width,
@@ -82,14 +82,14 @@ void update_current_select(Window *win)
         }
         if (ui->select.mode_extend_sides & extend_sides_vertical)
         {
-            ui->select.sides_vertices[right] = (Rectangle){
+            ui->select.sides_vertices[right] = (Rect){
                 .x = ui->select.selection_box.x + ui->select.selection_box.width 
                                                 - padding - width,
                 .y = ui->select.selection_box.y + cell_size,
                 .width = width,
                 .height = ui->select.selection_box.height - 2* cell_size,
             };
-            ui->select.sides_vertices[left] = (Rectangle){
+            ui->select.sides_vertices[left] = (Rect){
                 .x = ui->select.selection_box.x + padding,
                 .y = ui->select.selection_box.y + cell_size,
                 .width = width,
@@ -103,7 +103,7 @@ void update_current_select(Window *win)
             ui->select.selection_box.width,
             ui->select.selection_box.height
         );
-        ui->select.paste_vertices = (Rectangle){
+        ui->select.paste_vertices = (Rect){
             .x = ui->select.selection_box.x + ui->select.selection_box.width  / 2. 
                                             - min_wh / 4.,
             .y = ui->select.selection_box.y + ui->select.selection_box.height / 2. 
@@ -117,8 +117,8 @@ void update_current_drag(Window *win)
 {
     Ui *ui = &win->ui;
 
-    const Vector2 target_start = POS_TO_VECTOR2(win->ui.edit.drag_start);
-    const Vector2 target_end   = POS_TO_VECTOR2(win->ui.edit.drag_end  );
+    const Vec2 target_start = POS_TO_VEC2(win->ui.edit.drag_start);
+    const Vec2 target_end   = POS_TO_VEC2(win->ui.edit.drag_end  );
 
     // every 100ms  -> frame_delta = 0.1 s
     // /2 distance to target
@@ -129,55 +129,61 @@ void update_current_drag(Window *win)
 }
 
 
-void camera_mouvement_input(Window *win)
+
+static float *zoom_ptr = NULL;
+void zoom_scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
 {
-    const float mouv_speed = 5. * 60. / GetFPS() * (2. / win->cam.zoom);
-    if (IsKeyDown(KEY_D))
-    {
-        printf("right"); 
-        UPDATE_LINE;
-        win->cam.target.x += mouv_speed;
-    }
-    if (IsKeyDown(KEY_A))
-    {
-        printf("left"); 
-        UPDATE_LINE;
-        win->cam.target.x -= mouv_speed;
-    }
-    if (IsKeyDown(KEY_W))
-    {
-        printf("up"); 
-        UPDATE_LINE;
-        win->cam.target.y -= mouv_speed;
-    }    
-    if (IsKeyDown(KEY_S))
-    {
-        printf("down"); 
-        UPDATE_LINE;
-        win->cam.target.y += mouv_speed;
-    }
-    
-    win->cam.zoom = expf(logf(win->cam.zoom) + ((float)GetMouseWheelMove()*0.1f));
-    if (GetMouseWheelMove() != 0.0f)
-    {
-        printf("zoom in or out"); 
-        UPDATE_LINE;
-    }
-    
-    const float max_zoom = 20.0f;
-    const float min_zoom = 0.01f;
-    if (win->cam.zoom > max_zoom) 
-        win->cam.zoom = max_zoom;
-    else if (win->cam.zoom < min_zoom)
-        win->cam.zoom = min_zoom;
+    UNUSED(window);
+    *zoom_ptr = MIN(
+        MAX(
+            expf(log(*zoom_ptr) + ( yoffset + xoffset ) * 0.1),
+            // 0.01f
+            0.00001f
+        ),
+        200.0f
+    );
+    printf("zoom in or out (zoom: %f)", *zoom_ptr);
+    UPDATE_LINE;
 }
 
-static bool is_mouse_colliding_Rec(Window *win, Rectangle rec)
+void camera_mouvement_input(Window *win)
 {
-    const Vector2 mouse = GetScreenToWorld2D(GetMousePosition(), win->cam);
-    const bool res = CheckCollisionPointRec(mouse, rec);
+    const float mouv_speed = 1. / win->render->frame_time.fps
+                                / win->rd.cam.zoom;
+    // const float mouv_speed = 1.0 / (win->rd.cam.zoom * 16.0);
+    if (rd_is_key_down(GLFW_KEY_D))
+    {
+        win->rd.cam.target.x += mouv_speed;
+        printf("right cam target.x = %f", win->rd.cam.target.x);
+        UPDATE_LINE;
+    }
+    if (rd_is_key_down(GLFW_KEY_A))
+    {
+        win->rd.cam.target.x -= mouv_speed;
+        printf("left cam target.x = %f", win->rd.cam.target.x);
+        UPDATE_LINE;
+    }
+    if (rd_is_key_down(GLFW_KEY_W))
+    {
+        win->rd.cam.target.y -= mouv_speed;
+        printf("up cam target.y = %f", win->rd.cam.target.y);
+        UPDATE_LINE;
+    }    
+    if (rd_is_key_down(GLFW_KEY_S))
+    {
+        win->rd.cam.target.y += mouv_speed;
+        printf("down cam target.y = %f", win->rd.cam.target.y);
+        UPDATE_LINE;
+    }
+    zoom_ptr = &win->rd.cam.zoom;
+}
 
-    return res;
+static bool is_mouse_colliding_World_Rec(Window *win, Rect rec)
+{
+    return rd_collision_Vec2_Rect(
+        rd_get_screen_to_world(win->rd.cam, rd_get_cursor_pos()),
+        rec 
+    );
 }
 
 static void state_show_resize(Window *win)
@@ -217,27 +223,27 @@ void edition_input(Window *win)
 {
     Ui *ui = &win->ui;
 
-    if (pull_Button(ui, &ui->edit.style_normal))
+    if (rd_Button(&ui->edit.style_normal))
         ui->edit.style_mode = edit_style_normal;
-    if (pull_Button(ui, &ui->edit.style_orthogonal))
+    if (rd_Button(&ui->edit.style_orthogonal))
         ui->edit.style_mode = edit_style_orthogonal;
-    if (pull_Button(ui, &ui->edit.style_lign))
+    if (rd_Button(&ui->edit.style_lign))
         ui->edit.style_mode = edit_style_lign;
     
     
-    if (IsKeyPressed(KEY_K))
+    if (rd_is_key_pressed(GLFW_KEY_K))
     {
         ui->edit.style_mode = edit_style_normal;
         printf("interpolation none");
         UPDATE_LINE;
     }
-    else if (IsKeyPressed(KEY_SEMICOLON))
+    else if (rd_is_key_pressed(GLFW_KEY_SEMICOLON))
     {
         ui->edit.style_mode = edit_style_lign;
         printf("interpolation lign (4-ways)");
         UPDATE_LINE;
     }
-    else if (IsKeyPressed(KEY_L))
+    else if (rd_is_key_pressed(GLFW_KEY_L))
     {
         ui->edit.style_mode = edit_style_orthogonal;
         printf("interpolation orthogonal lign");
@@ -246,13 +252,13 @@ void edition_input(Window *win)
     
 
 
-    if (IsKeyDown(KEY_ONE))
+    if (rd_is_key_down(GLFW_KEY_1))
     {
         ui->edit.current_state = cable_off;
         printf("select cable");
         UPDATE_LINE;
     }
-    if (IsKeyDown(KEY_TWO))
+    if (rd_is_key_down(GLFW_KEY_2))
     {
         ui->edit.current_state = ty_transistor 
                                 | var_off
@@ -260,7 +266,7 @@ void edition_input(Window *win)
         printf("select transistor on");
         UPDATE_LINE;
     }
-    if (IsKeyDown(KEY_THREE))
+    if (rd_is_key_down(GLFW_KEY_3))
     {
         ui->edit.current_state = ty_not_gate
                                 | var_off
@@ -268,21 +274,21 @@ void edition_input(Window *win)
         printf("select not gate");
         UPDATE_LINE;
     }
-    if (IsKeyDown(KEY_FOUR))
+    if (rd_is_key_down(GLFW_KEY_4))
     {
         ui->edit.current_state = bridge;
         printf("select bridge");
         UPDATE_LINE;
     }
-    if (IsKeyDown(KEY_ZERO))
+    if (rd_is_key_down(GLFW_KEY_0))
     {
         ui->edit.current_state = cable_on;
         printf("select cable on");
         UPDATE_LINE;
     }
-    if (IsKeyPressed(KEY_R))
+    if (rd_is_key_pressed(GLFW_KEY_R))
     {
-        if (IsKeyDown(KEY_LEFT_SHIFT))
+        if (rd_is_key_down(GLFW_KEY_LEFT_SHIFT))
             ui->edit.current_direction = (ui->edit.current_direction == 0 
                                             ? 3 : (ui->edit.current_direction - 1));
         else
@@ -296,7 +302,7 @@ void edition_input(Window *win)
     }
 
     if (ui->edit.style_mode == edit_style_normal
-     && is_mouse_button_down(ui, MOUSE_BUTTON_LEFT)
+     && rd_is_mouse_button_down(GLFW_MOUSE_BUTTON_LEFT)
     ) {
         World_set_lign_cell(
             &win->wrd,
@@ -306,7 +312,7 @@ void edition_input(Window *win)
         );
     }
     if (ui->edit.style_mode == edit_style_orthogonal
-     && is_mouse_button_released(ui, MOUSE_BUTTON_LEFT)
+     && rd_is_mouse_button_released(GLFW_MOUSE_BUTTON_LEFT)
     ) {
         World_set_orth_lign_cell(
             &win->wrd,
@@ -315,7 +321,7 @@ void edition_input(Window *win)
         );
     }
     if (ui->edit.style_mode == edit_style_lign
-     && is_mouse_button_released(ui, MOUSE_BUTTON_LEFT)
+     && rd_is_mouse_button_released(GLFW_MOUSE_BUTTON_LEFT)
     ) {
         World_set_lign_cell(
             &win->wrd,
@@ -325,7 +331,7 @@ void edition_input(Window *win)
     }
 
     if (ui->edit.style_mode == edit_style_orthogonal
-     && is_mouse_button_down(ui, MOUSE_BUTTON_LEFT)
+     && rd_is_mouse_button_down(GLFW_MOUSE_BUTTON_LEFT)
     ) {
         if (ABS(ui->mouse_pos.x - ui->edit.drag_start.x) 
          >  ABS(ui->mouse_pos.y - ui->edit.drag_start.y))
@@ -339,13 +345,13 @@ void edition_input(Window *win)
             };
     }
     else if (ui->edit.style_mode == edit_style_lign
-     && is_mouse_button_down(ui, MOUSE_BUTTON_LEFT))
+     && rd_is_mouse_button_down(GLFW_MOUSE_BUTTON_LEFT))
         ui->edit.drag_end = ui->mouse_pos;
     else ui->edit.drag_start = ui->edit.drag_end 
                              = ui->mouse_pos;
     
     
-    if (is_mouse_button_down(ui, MOUSE_BUTTON_RIGHT))
+    if (rd_is_mouse_button_down(GLFW_MOUSE_BUTTON_RIGHT))
     {
         World_set_cell(
             &win->wrd,
@@ -366,7 +372,7 @@ void select_input(Window *win)
     Ui *ui = &win->ui;
     
     if (ui->select.mode == selection_waiting
-        && is_mouse_button_pressed(ui, MOUSE_BUTTON_LEFT)
+        && rd_is_mouse_button_pressed(GLFW_MOUSE_BUTTON_LEFT)
     ) {
         ui->select.mode          = selection_selecting;
         ui->select.start         = ui->mouse_pos;
@@ -374,15 +380,15 @@ void select_input(Window *win)
         
         if (!REMANENT_CURRENT_VALUE)
         {
-            ui->select.current_start = POS_TO_VECTOR2(ui->mouse_pos);
-            ui->select.current_end   = POS_TO_VECTOR2(ui->mouse_pos);
+            ui->select.current_start = POS_TO_VEC2(ui->mouse_pos);
+            ui->select.current_end   = POS_TO_VEC2(ui->mouse_pos);
         }
         
-        if (is_mouse_button_released(ui, MOUSE_BUTTON_LEFT))
+        if (rd_is_mouse_button_released(GLFW_MOUSE_BUTTON_LEFT))
             ui->select.mode = selection_selected;
     }
     else if (ui->select.mode == selection_selecting
-            && is_mouse_button_released(ui, MOUSE_BUTTON_LEFT)
+          && rd_is_mouse_button_released(GLFW_MOUSE_BUTTON_LEFT)
     ) {
         ui->select.end = ui->mouse_pos;
         ui->select.mode = selection_selected;
@@ -394,24 +400,24 @@ void select_input(Window *win)
         state_show_resize(win);
     }
     else if (ui->select.mode == selection_selected
-            && is_mouse_button_pressed(ui, MOUSE_BUTTON_LEFT)
+            && rd_is_mouse_button_pressed(GLFW_MOUSE_BUTTON_LEFT)
     ) { // cancel/end the selection
-        if (is_mouse_colliding_Rec(win, ui->select.sides_vertices[up]))
+        if (is_mouse_colliding_World_Rec(win, ui->select.sides_vertices[up]))
         {
             ui->select.mode = selection_resizing;
             ui->select.mode_sides_resize = extend_resize_up;
         }
-        else if (is_mouse_colliding_Rec(win, ui->select.sides_vertices[right]))
+        else if (is_mouse_colliding_World_Rec(win, ui->select.sides_vertices[right]))
         {
             ui->select.mode = selection_resizing;
             ui->select.mode_sides_resize = extend_resize_right;
         }
-        else if (is_mouse_colliding_Rec(win, ui->select.sides_vertices[down]))
+        else if (is_mouse_colliding_World_Rec(win, ui->select.sides_vertices[down]))
         {
             ui->select.mode = selection_resizing;
             ui->select.mode_sides_resize = extend_resize_down;
         }
-        else if (is_mouse_colliding_Rec(win, ui->select.sides_vertices[left]))
+        else if (is_mouse_colliding_World_Rec(win, ui->select.sides_vertices[left]))
         {
             ui->select.mode = selection_resizing;
             ui->select.mode_sides_resize = extend_resize_left;
@@ -423,9 +429,9 @@ void select_input(Window *win)
         }
     }
     else if (ui->select.mode == selection_paste_preview
-            && is_mouse_button_pressed(ui, MOUSE_BUTTON_LEFT)
+            && rd_is_mouse_button_pressed(GLFW_MOUSE_BUTTON_LEFT)
     ) {
-        if (is_mouse_colliding_Rec(win, ui->select.paste_vertices))
+        if (is_mouse_colliding_World_Rec(win, ui->select.paste_vertices))
             ui->select.mode = selection_paste_mouv_preview;
         else
         {
@@ -439,17 +445,17 @@ void select_input(Window *win)
         }
     }
     else if (ui->select.mode == selection_paste_mouv_preview
-            && is_mouse_button_down(ui, MOUSE_BUTTON_LEFT)
+            && rd_is_mouse_button_down(GLFW_MOUSE_BUTTON_LEFT)
     ) {
         ui->select.mode = selection_paste_mouv_preview;
         set_to_paste_preview(ui);
     }
     else if (ui->select.mode == selection_paste_mouv_preview
-            && is_mouse_button_released(ui, MOUSE_BUTTON_LEFT))
+            && rd_is_mouse_button_released(GLFW_MOUSE_BUTTON_LEFT))
         ui->select.mode = selection_paste_preview;
     else if (ui->select.mode == selection_resizing
             && ui->select.mode_sides_resize != extend_resize_none
-            && is_mouse_button_down(ui, MOUSE_BUTTON_LEFT)
+            && rd_is_mouse_button_down(GLFW_MOUSE_BUTTON_LEFT)
     ) {
         switch (ui->select.mode_sides_resize)
         {
@@ -485,16 +491,16 @@ void select_input(Window *win)
         state_show_resize(win);
     }
     else if (ui->select.mode_sides_resize != extend_resize_none
-            && is_mouse_button_released(ui, MOUSE_BUTTON_LEFT))
+            && rd_is_mouse_button_released(GLFW_MOUSE_BUTTON_LEFT))
     {
         ui->select.mode_sides_resize = extend_resize_none;
         ui->select.mode = selection_selected;
     }
-    else if (is_mouse_button_down(ui, MOUSE_BUTTON_RIGHT))
+    else if (rd_is_mouse_button_down(GLFW_MOUSE_BUTTON_RIGHT))
         ui->select.mode = selection_waiting;
-    else if (IsKeyDown(KEY_LEFT_CONTROL))
+    else if (rd_is_key_down(GLFW_KEY_LEFT_CONTROL))
     {
-        if (IsKeyPressed(KEY_Z)
+        if (rd_is_key_pressed(GLFW_KEY_Z)
             && (ui->select.mode & selection_show_blue)
         ) { // delete
             World_delete_area(
@@ -504,7 +510,7 @@ void select_input(Window *win)
             );
             ui->select.mode = selection_waiting;
         }
-        else if (IsKeyPressed(KEY_C) 
+        else if (rd_is_key_pressed(GLFW_KEY_C) 
             && (ui->select.mode & selection_show_blue)
         ) { // copy
             save_pattern(
@@ -522,14 +528,14 @@ void select_input(Window *win)
             
             ui->select.mode = selection_waiting;
         }
-        else if (IsKeyPressed(KEY_V)) 
+        else if (rd_is_key_pressed(GLFW_KEY_V)) 
         { // preview paste
             ui->select.mode = selection_paste_preview;
             set_to_paste_preview(ui);
             
             // start small only the first time
-            ui->select.current_start = POS_TO_VECTOR2(ui->mouse_pos);
-            ui->select.current_end   = POS_TO_VECTOR2(ui->mouse_pos);
+            ui->select.current_start = POS_TO_VEC2(ui->mouse_pos);
+            ui->select.current_end   = POS_TO_VEC2(ui->mouse_pos);
         }
         
     }
@@ -541,7 +547,7 @@ void select_input(Window *win)
 
 void simulation_input(Window *win)
 { 
-    if (IsKeyPressed(KEY_LEFT_ALT))
+    if (rd_is_key_pressed(GLFW_KEY_LEFT_ALT))
     {
         printf("play one tick...");
         fflush(stdout);
@@ -556,15 +562,15 @@ void simulation_input(Window *win)
 
 void quit(Window *win)
 {
-    const char *err_save = save_World(&win->wrd, win->ui.menu.current_file_save_path
-                                                    ? win->ui.menu.current_file_save_path
-                                                    : win->ui.menu.default_file_save_path
-    );
-    if (err_save)
-    {
-        perror("save World");
-        printf(err_save);
-    }
+    // const char *err_save = save_World(&win->wrd, win->ui.menu.current_file_save_path
+    //                                                 ? win->ui.menu.current_file_save_path
+    //                                                 : win->ui.menu.default_file_save_path
+    // );
+    // if (err_save)
+    // {
+    //     perror("save World");
+    //     printf(err_save);
+    // }
 
     Window_free(win);
     exit(0);
@@ -576,34 +582,34 @@ void main_menu(Window *win)
 
     if (win->ui.menu.submenu == Submenu_self)
     {
-        if (IsKeyPressed(KEY_ESCAPE))
+        if (rd_is_key_pressed(GLFW_KEY_ESCAPE))
             win->ui.in_main_menu = false;
-        if (pull_Button(&win->ui, &win->ui.menu.quit))
+        if (rd_Button(&win->ui.menu.quit))
             quit(win);
-        if (pull_Button(&win->ui, &win->ui.menu.options))
+        if (rd_Button(&win->ui.menu.options))
             win->ui.menu.submenu = Submenu_option;
-        if (pull_Button(&win->ui, &win->ui.menu.load_file))
+        if (rd_Button(&win->ui.menu.load_file))
             win->ui.menu.submenu = Submenu_load_file;
-        if (pull_Button(&win->ui, &win->ui.menu.save_file))
+        if (rd_Button(&win->ui.menu.save_file))
             win->ui.menu.submenu = Submenu_save_file;
     }
     else if (win->ui.menu.submenu == Submenu_option)
     {
         TODO("options");
         
-        if (IsKeyPressed(KEY_ESCAPE))
+        if (rd_is_key_pressed(GLFW_KEY_ESCAPE))
             win->ui.menu.submenu = Submenu_self;
     }
     else if (win->ui.menu.submenu == Submenu_load_file)
     {
-        if (IsKeyPressed(KEY_ESCAPE))
+        if (rd_is_key_pressed(GLFW_KEY_ESCAPE))
             win->ui.menu.submenu = Submenu_self;
         
         
     }
     else if (win->ui.menu.submenu == Submenu_save_file)
     {
-        if (IsKeyPressed(KEY_ESCAPE))
+        if (rd_is_key_pressed(GLFW_KEY_ESCAPE))
             win->ui.menu.submenu = Submenu_self;
         
             
@@ -624,11 +630,11 @@ void main_menu(Window *win)
 void inputs(Window *win)
 {
     win->ui.old_mouse_pos = win->ui.mouse_pos;
-    win->ui.mouse_pos = screen_to_Pos(win->cam, GetMousePosition());
+    win->ui.mouse_pos = /* rdTODO screen_to_Pos */  VEC2_TO_POS(rd_get_cursor_pos(win->render));
     Ui *ui = &win->ui;
 
     if (win->ui.is_button_clicked
-     && IsMouseButtonReleased(MOUSE_BUTTON_LEFT))
+     && rd_is_mouse_button_released(GLFW_MOUSE_BUTTON_LEFT))
         win->ui.is_button_clicked = false;
     
         
@@ -636,24 +642,24 @@ void inputs(Window *win)
         main_menu(win);
     else
     {
-        if (IsKeyPressed(KEY_ESCAPE))
+        if (rd_is_key_pressed(GLFW_KEY_ESCAPE))
             ui->in_main_menu = true;
 
         // tmp -> before ui
-        if (IsKeyPressed(KEY_P))
+        if (rd_is_key_pressed(GLFW_KEY_P))
         {
             ui->select.mode = selection_waiting;
             ui->mode = mode_select;
             printf("mode selection");
             UPDATE_LINE;
         }
-        else if (IsKeyPressed(KEY_O))
+        else if (rd_is_key_pressed(GLFW_KEY_O))
         {
             ui->mode = mode_editing;
             printf("mode editing");
             UPDATE_LINE;
         }
-        else if (IsKeyPressed(KEY_I))
+        else if (rd_is_key_pressed(GLFW_KEY_I))
         {
             ui->mode = mode_idle;
             printf("mode idle");
@@ -662,17 +668,16 @@ void inputs(Window *win)
     
         
         
-        if (pull_Button(&win->ui, &win->ui.mode_idle))
+        if (rd_Button(&win->ui.mode_idle))
             win->ui.mode = mode_idle;
-        if (pull_Button(&win->ui, &win->ui.mode_editing))
+        if (rd_Button(&win->ui.mode_editing))
         {
             ui->select.mode = selection_waiting;
             win->ui.mode = mode_editing;
         }
-        if (pull_Button(&win->ui, &win->ui.mode_select))
+        if (rd_Button(&win->ui.mode_select))
             win->ui.mode = mode_select;
         
-            
     
         camera_mouvement_input(win);
         
@@ -688,14 +693,53 @@ void inputs(Window *win)
     ui->is_button_clicked = false;
 }
 
-Ui Ui_make(Camera2D cam)
+Ui Ui_make(Render *render)
 {
-    SetExitKey(KEY_BACKSLASH);
+    glfwSetScrollCallback(render->glfw, zoom_scroll_callback);
 
-    const char * file_save_path = "./save/world1.wrd";
+    const char *file_save_path = "./save/world1.wrd";
+    Ui_draw_data draw = {0};
+
+    {
+        glGenVertexArrays(1, &draw.VAO);
+        glGenBuffers(1, &draw.VBO);
+        
+        glBindVertexArray(draw.VAO);
+
+        glBindBuffer(GL_ARRAY_BUFFER, draw.VBO);
+        glBufferData(GL_ARRAY_BUFFER, 
+            draw.vertices.capacity * sizeof(draw.vertices.arr[0]),
+            draw.vertices.arr, 
+            GL_STREAM_DRAW
+        );
+
+        glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(Ui_vertex_data), 
+            (void*)0
+        );
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(Ui_vertex_data), 
+            (void*)sizeof((Ui_vertex_data){0}.box)
+        );
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(2, 1, GL_UNSIGNED_INT, GL_FALSE, sizeof(Ui_vertex_data), 
+            (void*)(sizeof((Ui_vertex_data){0}.box) 
+                  + sizeof((Ui_vertex_data){0}.color))
+        );
+        glEnableVertexAttribArray(2);
+        glVertexAttribPointer(3, 1, GL_UNSIGNED_INT, GL_FALSE, sizeof(Ui_vertex_data), 
+            (void*)(sizeof((Ui_vertex_data){0}.box)
+                  + sizeof((Ui_vertex_data){0}.color)
+                  + sizeof((Ui_vertex_data){0}.type))
+        );
+        glEnableVertexAttribArray(3);
+
+        
+    }
+
     return (Ui){
+        .draw = draw,
         .mode = mode_idle,
-        .mouse_pos = screen_to_Pos(cam, GetMousePosition()),
+        .mouse_pos = {0},
         .edit = {
             .current_state = cable_off,
             .current_direction = up,
@@ -739,7 +783,7 @@ Ui Ui_make(Camera2D cam)
             .default_file_save_path = file_save_path,
             .background_shade = (Color){ 0, 10, 30, 120 } // (Color){ 130, 130, 130, 255 / 4 }
         },
-        .in_game_ui_cam = { .zoom = 2. },
+        .cam = { .zoom = 2. },
         .mode_idle = {
             .text = "#149#",
             .bounds = {0},

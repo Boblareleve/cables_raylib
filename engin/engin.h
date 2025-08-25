@@ -17,12 +17,12 @@
 #include "sets.h"
 #include "da.h"
 #include "alf.h"
-
 #include "print.h"
 #define STRING_FILEIO
 #include "Str.h"
 #include "err.h"
 
+#include "../utils.h"
 
 #define W 16
 #define H 16
@@ -60,7 +60,6 @@ typedef struct iRectangle
 
 
 
-#define Null_Struct(T, value) (0 == memcmp(&value, &(T){0}, sizeof(value)))
 #ifndef ABS
 # define ABS(a) ((a) < 0 ? -(a) : (a))
 #endif /* ABS */
@@ -88,14 +87,24 @@ DA_TYPEDEF_ARRAY(Pos_Chunk);
 typedef uint8_t Cell;
 typedef struct World World;
 typedef struct Chunk Chunk;
+
+typedef Cell Chunk_raw[H*W];
+typedef Cell Chunk_raw_2D[H][W];
 typedef struct Chunk
 {
     union { // 1 * 64bytes 
-        Cell arr[H*W];
-        Cell arr2D[H][W];
+        Chunk_raw arr;
+        Chunk_raw_2D arr2D;
     };
 
     Pos pos; // 8bytes
+
+    struct Render_data_chunk
+    {
+        // -1 if not in the buffer
+        int index_buffer;
+        int _pad;
+    } render;
     
     // up right down left
     Chunk *close_chunks[4]; // 32bytes
@@ -114,8 +123,9 @@ typedef struct Chunk
 
 static_assert(sizeof((Chunk){0}.arr) == sizeof((Chunk){0}.arr2D), "chunk .arr is not the same size as .arr2D");
 static_assert(sizeof((Chunk){0}.arr) == sizeof(Cell) * W * H, "chunk .arr have an unexpected size");
-static_assert(sizeof(Chunk) == 384, "raw size check of Chunk");
+static_assert(sizeof(Chunk) >= 392, "raw size check of Chunk");
 // 256-512                4 * 64 + 138 = 256 + 128 = 386 = 6 * 64
+// 392 % 64 == (64 - 8 = 56)
 
 // 2 -> 0b01010 0
 // 4 -> 0b0101 00
@@ -218,13 +228,7 @@ typedef struct
     _tmp ? _tmp->data : NULL; \
 })
 
-#define SWAP(a, b) do { __auto_type SWAP_tmp = a; a = b; b = SWAP_tmp; } while (0)
 
-
-// from nob.h (thanks rexim)
-#define UNUSED(value) (void)(value)
-#define TODO(message) do { fprintf(stderr, "%s:%d: TODO: %s\n", __FILE__, __LINE__, message); abort(); } while(0)
-#define UNREACHABLE(message) do { fprintf(stderr, "%s:%d: UNREACHABLE: %s\n", __FILE__, __LINE__, message); abort(); } while(0)
 
 
 

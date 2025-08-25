@@ -153,6 +153,7 @@ Arg_Shell_List arg_parse(const sa_Strv *args)
             printf("    (-t)|(-target) <target>      what config to use (\"debug\", \"release\", \"gdb\")\n");
             printf("    (-s)|(-scoop) <scoop>        what part of the project to build (\"engin\", \"game\")\n");
             printf("    (-p)|(-platform) <platform>  what platform to build for (\"linux\", \"windows\")\n");
+            exit(0);
         }
         else
         {
@@ -182,7 +183,9 @@ Arg_Shell_List arg_parse(const sa_Strv *args)
         
         da_push_many(&res.link_flags, 
             Strv_cstr("-L./lib"), 
-            Strv_cstr("-lm")
+            Strv_cstr("-lm"),
+            Strv_cstr("-lglfw"),
+            Strv_cstr("-ldl")
         );
     }
     { // mode
@@ -230,15 +233,16 @@ Arg_Shell_List arg_parse(const sa_Strv *args)
                 Strv_cstr(SRC_DIR"main.c"),
                 Strv_cstr(SRC_DIR"lib_impl.c"),
                 Strv_cstr(SRC_DIR"draw.c"),
-                Strv_cstr(SRC_DIR"button.c"),
-                Strv_cstr(SRC_DIR"ui_input.c")
+                Strv_cstr(SRC_DIR"ui_input.c"),
+                Strv_cstr(SRC_DIR"render.c"),
+                Strv_cstr(SRC_DIR"shader.c")
             );
 
-            da_push(&res.link_flags, 
-                (res.target == debug || res.target == gdb)
-                    ? Strv_cstr("-l:libraylib_debug.a")
-                    : Strv_cstr("-l:libraylib.a")
-            );
+            // da_push(&res.link_flags, 
+            //     (res.target == debug || res.target == gdb)
+            //         ? Strv_cstr("-l:libraylib_debug.a")
+            //         : Strv_cstr("-l:libraylib.a")
+            // );
         }
         else if (res.scoop == engin) 
         {

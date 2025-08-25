@@ -2,11 +2,12 @@
 #define MAIN_H
 
 
-/* raylib */
-#include "raylib.h"
-#include "rlgl.h"
-#include "raymath.h"
-#include "raygui.h"
+// /* raylib */
+// #include "raylib.h"
+// #include "rlgl.h"
+// #include "raymath.h"
+// #include "raygui.h"
+#include "render.h"
 
 /* std */
 #include <signal.h>
@@ -48,8 +49,6 @@
 
 /* function like macro */
 
-#define SWAP(a, b) do { __auto_type SWAP_tmp = a; a = b; b = SWAP_tmp; } while (0)
-#define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define UPDATE_LINE printf("                                          \r"); fflush(stdout)
 
 // int print_buffer_size = 0;
@@ -70,36 +69,37 @@
     SetWindowTitle(print_buffer),\
     print_buffer_size = 0\
 )
-#define Sprint_Vector2(v)\
+/* #define Sprint_Vector*2(v)\
 (char*)({\
     print_buffer_size = snprintf(print_buffer, print_buffer_size, "(%f,%f)", v.x, v.y);\
     print_buffer[print_buffer_size + 1] = '\0';\
     print_buffer;\
-})
+}) */
 
 extern int _LATCH;
 #define BegEnd(Name, BeginArg, EndArg)\
-for ((_LATCH = 0, Begin ## Name BeginArg); _LATCH < 1; _LATCH = 1, End ## Name EndArg)
-#define StartBodyEnd(start, end)\
-for ((_LATCH = 0, start); _LATCH < 1; _LATCH = 1, end)
+    for ((_LATCH = 0, Begin ## Name BeginArg); _LATCH < 1; _LATCH = 1, End ## Name EndArg)
 
 
 /* data structure */
 
-DA_TYPEDEF_ARRAY(Texture2D);
-SA_TYPEDEF_ARRAY(float);
+
+
+
+#define TEXS_TEXTURE_COUNT 2
 typedef struct Texs {
-    //tex index ; tex chunk
-    // sa_float *tex_chunks_x; // for the variant off o on
-    // sa_float *tex_chunks_y; // for the type
     float cell_size;
-    Texture2D  tex;
-    Texture2D  paste_mouver;
+    union {
+        struct {
+            Texture  atlas;
+            Texture  paste_mouver;
+        };
+        Texture tex_array[TEXS_TEXTURE_COUNT];
+    };
 } Texs;
 
 
 
-#define ABS(a) ((a) < 0 ? -(a) : (a))
 // incusive
 #define GET_WIDTH(pos1, pos2) (ABS(pos1.x - pos2.x) + 1)
 // incusive
@@ -107,25 +107,15 @@ typedef struct Texs {
 #define GET_MIN_WIDTH_HEIGHT(pos1, pos2)\
     MIN(GET_WIDTH(pos1, pos2), GET_HEIGHT(pos1, pos2))
 
-#define POS_TO_VECTOR2(pos) ((Vector2){ (float)(pos).x, (float)(pos).y})
+// #define POS_TO_VECTOR*2(pos) ((Vector*2){ (float)(pos).x, (float)(pos).y})
+
+#define POS_TO_VEC2(pos) ((Vec2){ (float)(pos).x, (float)(pos).y })
+#define VEC2_TO_POS(vec) ((Pos) { (  int)(vec).x, (  int)(vec).y })
 
 
 
 
 
-typedef struct Button
-{
-    Rectangle bounds;
-    enum {
-        state_normal = 0,
-        state_focused,
-        state_pressed,
-        state_disabled
-    } state;
-
-    const char *text;
-    // bool is_in_world_space;
-} Button;
 
 
 #define SELECTION_COLOR                 (Color){ 0,   121, 241, 32  }
@@ -140,8 +130,8 @@ typedef struct Select_ui
     Pos end;
 
     
-    Vector2 current_start;
-    Vector2 current_end;
+    Vec2 current_start;
+    Vec2 current_end;
     
     enum Extend_enable {
         extend_sides_none = 0,
@@ -149,7 +139,7 @@ typedef struct Select_ui
         extend_sides_horizontal = 0b10,
         extend_sides_full = 0b11,
     } mode_extend_sides;
-    Rectangle sides_vertices[4]; // up right down left
+    Rect sides_vertices[4]; // up right down left
     
     enum Extend_resize {
         extend_resize_up    = up,
@@ -163,8 +153,8 @@ typedef struct Select_ui
         mouv_paste_none = 0,
         mouv_paste_mouv
     } mode_mouv_paste;
-    Rectangle paste_vertices;
-    Rectangle selection_box;
+    Rect paste_vertices;
+    Rect selection_box;
 
     enum Select_state {
         selection_waiting = 0,
@@ -212,8 +202,8 @@ typedef struct Edit_ui
     Pos drag_start;
     Pos drag_end;
 
-    Vector2 current_drag_start;
-    Vector2 current_drag_end;
+    Vec2 current_drag_start;
+    Vec2 current_drag_end;
 
 } Edit_ui;
 
@@ -264,9 +254,38 @@ typedef struct Menu_ui
 } Menu_ui;
 
 
+
+typedef struct Ui_vertex_data
+{
+    Rect box;
+    Color color;
+    enum Ui_element_type {
+        ui_rectangle_element = 0,
+        ui_rectangle_lignes_element = 1,
+        ui_texture_element = 2,
+        // LATER MAYBE:
+        // ui_rectangle_o ut_lignes different color lignes
+        // button high light on over...
+    } type;
+    uint32_t sampler_index;
+} Ui_vertex_data;
+static_assert(sizeof(enum Ui_element_type) == 4);
+DA_TYPEDEF_ARRAY(Ui_vertex_data);
+
+
+
+typedef struct Ui_draw_data
+{
+    da_Ui_vertex_data vertices;
+    VAO_id VAO;
+    VBO_id VBO;
+} Ui_draw_data;
+
 typedef struct Ui
 {
-    Camera2D in_game_ui_cam;
+    Camera cam;
+    Shader ui_shader;
+
     enum Interaction_mode {
         mode_idle, // no editing and anything
         mode_editing,
@@ -296,7 +315,62 @@ typedef struct Ui
     Edit_ui edit;
     Select_ui select;
     Menu_ui menu;
+
+    /* draw:
+        - rectangle 0
+        - rectangle lignes 1
+        - texture 2
+        LATER MAYBE:
+        - rectangle different color lignes
+        - button high light on over...
+
+        4 float: x,y,w,h
+        4 float: r,g,b,a
+        1 int: sampler index
+        1 int: type
+
+        GL_STREAM_DRAW
+    */
+    
+
+    Ui_draw_data draw;
 } Ui;
+
+
+DA_TYPEDEF_ARRAY_PTR(Chunk);
+typedef Vec2 Vec24[4];
+DA_TYPEDEF_ARRAY(Vec24);
+DA_TYPEDEF_ARRAY(Vec2);
+DA_TYPEDEF_ARRAY(Chunk_raw);
+typedef struct Render_world
+{
+    Shader shader;
+    union {
+        struct {
+            GLint uniform_campos_loc;
+            GLint uniform_camzoom_loc;
+            GLint uniform_width_loc;
+            GLint uniform_height_loc;
+            GLint uniform_ratio_loc;
+        };
+        GLint uniform_locs[5];
+    };
+
+
+    uint32_t max_visible_chunk;
+    bool vertices_to_update;
+    Camera cam;
+
+    da_ptr_Chunk chunks;
+    da_Vec2 vertices;
+    da_Chunk_raw chunk_texture;
+
+
+    TBO_id VAO;
+    TBO_id VBO;
+    TBO_id TBO;
+    Texture_id TEX;
+} Render_world;
 
 
 
@@ -304,9 +378,15 @@ typedef struct Ui
 typedef struct Window
 {
     World wrd;
-    Camera2D cam;
+    
+    
+    // Camera2D cam;
+    Render *render;
+    
+    Texs  texs;
 
-    Texs texs;
+    Render_world rd;
+
 
     Option option;
     Color background_color;
@@ -323,9 +403,10 @@ extern const float direction_to_rotation[4];
 
 /* function inline */
 
-static inline Pos screen_to_Pos(Camera2D cam, Vector2 pos)
+
+static inline Pos screen_to_Pos(Camera cam, Vec2 pos)
 {
-    pos = GetScreenToWorld2D(pos, cam);
+    pos = rd_get_screen_to_world(cam, pos);
     pos.x /= W;
     pos.y /= H;
 
@@ -334,18 +415,11 @@ static inline Pos screen_to_Pos(Camera2D cam, Vector2 pos)
         .y = (int)(-pos.y + (pos.y > 0 ? -1 : 0))
     };
 }
-/* static inline Pos screen_to_P*os_Globale(Camera2D cam, Vector2 pos)
-{
-    return Pos_to_P*os_Globale(
-        screen_to_Pos(cam, pos)
-    );
-} */
-
-static inline void Rectangle_print(Rectangle rec)
+static inline void Rect_print(Rect rec)
 {
     printf("x%f y%f w%f h%f", rec.x, rec.y, rec.width, rec.height);
 }
-static inline Rectangle get_rec_from_pos_to_pos(float cell_size, Vector2 start, Vector2 end)
+static inline Rect get_rec_from_pos_to_pos(float cell_size, Vec2 start, Vec2 end)
 {
     if (end.x < start.x)
         SWAP(end.x, start.x);
@@ -355,21 +429,21 @@ static inline Rectangle get_rec_from_pos_to_pos(float cell_size, Vector2 start, 
     const float width =  GET_WIDTH(start, end);
     const float height = GET_HEIGHT(start, end);
 
-    return (Rectangle){
+    return (Rect){
          start.x * W,
           -end.y * H - H,
         width  * cell_size,
         height * cell_size,
     };
 }
-static inline bool button(Ui *ui, Camera2D cam, Rectangle bounds, const char *text)
+/* static inline bool button(Ui *ui, Camera cam, Rect bounds, const char *text)
 {
     bool click = GuiButton(cam, bounds, text);
     ui->is_button_clicked = ui->is_button_clicked || click;
 
     return click;
-}
-static inline bool is_mouse_button_down(const Ui *ui, int button)
+} */
+/* static inline bool is_mouse_button_down(const Ui *ui, int button)
 {
     return !ui->is_button_clicked && IsMouseButtonDown(button);
 }
@@ -385,29 +459,33 @@ static inline bool is_mouse_button_pressed(const Ui *ui, int button)
 {
     return !ui->is_button_clicked && IsMouseButtonPressed(button);
 }
+ */
 
-
+static inline void Camera_print(Camera cam)
+{
+    printf("cam: \n\ttarget x%f y%f\n\tzoom %f\n", cam.target.x, cam.target.y, cam.zoom);
+}
 
 /* function prototypes */
-
 
 
 Texs Texs_make(const char *atlas_name, const char *paste_mouver_name);
 void Texs_free(Texs *texs);
 
-// can update some ui value (for raygui.h buttons)
-void Window_draw(const Window *wrd, Ui *ui);
+void Window_draw(Window *wrd);
+void Ui_draw(const Window *win);
+
 
 Window Window_make(const char *name);
 void Window_free(Window *win);
 
 void quit(Window *win);
 void inputs(Window *win);
-Ui Ui_make(Camera2D cam);
+Ui Ui_make(Render *render);
 void Ui_free(Ui *ui);
 
-bool pull_Button(Ui *ui, Button *button);
-void draw_Button(Button button);
+// bool pull_Button(Ui *ui, Button *button);
+// void draw_Button(Button button);
 
 bool update_options_Json(Window *win, const Json json);
 bool update_options(Window *win);
