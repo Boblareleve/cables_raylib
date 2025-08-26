@@ -3,6 +3,21 @@
 
 static Render *current_render = NULL;
 
+void _rd_log(Rd_log_level level, int line, const char *file, const char *msg, ...)
+{
+    static const char *level_msg[rd_count] = {
+        [rd_info]    = "[INFO]",
+        [rd_warning] = "[WARNING]",
+        [rd_error]   = "[ERROR]"
+    };
+    printf("%s %s:%d: ", level_msg[level], file, line);
+    va_list args;
+    va_start(args, msg);
+        vprintf(msg, args);
+    va_end(args);
+    printf("\n");
+}
+
 
 #ifdef DEBUG
 static void debugMessage(GLenum source, GLenum type, GLuint id, GLenum severity, GLsizei length, const GLchar *message, const void *userParam)
@@ -55,8 +70,8 @@ static void error_callback(int error_code, const char* description)
 {
     // error key used to make the input array
     if (error_code == 65539) 
-    return ;
-    printf("[ERROR] %d: %s\n", error_code, description);
+        return ;
+    rd_log(rd_error, "(%d): %s\n", error_code, description);
 }
 #endif
 
@@ -66,6 +81,7 @@ static void framebuffer_size_callback(GLFWwindow* window, int width, int height)
     // make sure the viewport matches the new window dimensions; note that width and 
     // height will be significantly larger than specified on retina displays.
     glViewport(0, 0, width, height);
+    
     if (current_render)
     {
         current_render->screen_width = width;
@@ -98,7 +114,7 @@ static GLFWwindow *init_GLFWwindow(const char *title, int width, int height)
     GLFWwindow* window = glfwCreateWindow(width, height, title, NULL, NULL);
     if (!window)
     {
-        printf("[ERROR] Failed to create GLFW window\n");
+        rd_log(rd_error, "Failed to create GLFW window");
         glfwTerminate();
         return NULL;
     }
@@ -109,7 +125,7 @@ static GLFWwindow *init_GLFWwindow(const char *title, int width, int height)
     
     if (!gladLoaderLoadGL())
     {
-        printf("[ERROR] Failed to initialize GLAD\n");
+        rd_log(rd_error, "Failed to initialize GLAD");
         glfwTerminate();
         return NULL;
     }
@@ -130,11 +146,10 @@ static GLFWwindow *init_GLFWwindow(const char *title, int width, int height)
         glDebugMessageCallbackARB(debugMessage, NULL);
         glDebugMessageControlARB(GL_DONT_CARE, GL_DONT_CARE, GL_DONT_CARE, 0, NULL, GL_TRUE);
     }
-    // else printf("[WARNING] failed to enable debug\n");
 #endif
     
     
-    
+    glViewport(0, 0, width, height);
     return window;
 }
 bool rd_should_close()
@@ -467,7 +482,7 @@ Render *rd_init(const char *title, int width, int height, rd_resize_callback_t c
     };
     
     glfwSwapInterval(1);
-    printf("window refreshRate: %i\n", glfwGetVideoMode(glfwGetPrimaryMonitor())->refreshRate);
+    if (0) printf("window refreshRate: %i\n", glfwGetVideoMode(glfwGetPrimaryMonitor())->refreshRate);
     
     res->screen_width = width;
     res->screen_height = height;
@@ -493,7 +508,6 @@ Render *rd_init(const char *title, int width, int height, rd_resize_callback_t c
         else if (err) abort();
     }
 
-    
     return res;
 }
 
@@ -508,7 +522,7 @@ void rd_deinit()
 
 
 
-static Shader_id rd_load_shader(Shader_metadata data)
+static Shader_id rd_load_a_shader(Shader_metadata data)
 {
     // reset log anyway
     print_buffer[0] = '\0';
@@ -520,7 +534,7 @@ static Shader_id rd_load_shader(Shader_metadata data)
     if (!Strb_cat_file(&shader_string, data.file_path))
     {
         Strb_free(shader_string);
-        printf("[ERROR] can't open shader: %s\n", data.file_path);
+        rd_log(rd_error, "can't open shader: %s", data.file_path);
         return 0;
     }
     Strb_cat_null(&shader_string);
@@ -539,23 +553,23 @@ static Shader_id rd_load_shader(Shader_metadata data)
     if (!success)
     {
         glGetShaderInfoLog(gl_shader, sizeof(print_buffer), NULL, print_buffer);
-        printf("[ERROR] shader failed to compile: %s:\n\t%s\n", data.file_path, print_buffer);
+        rd_log(rd_error, "shader failed to compile: %s:\n\t%s", data.file_path, print_buffer);
         glDeleteShader(gl_shader);
         return 0;
     }
     return gl_shader;
 }
 
-// uniform_setter -> for uniform that don't change often
-bool rd_reload_shader(Shader *shader, set_uniform_fun_t uniform_setter, void *uniform_setter_arg)
+// static_uniform_setter -> for uniform that don't change often
+static bool rd_dummy_reload_shader(Shader *shader, void *uniform_setter_arg)
 {
     // assert(0 <= shader_count && shader_count < 20);
     
     da_Shader_id compile_shaders = {0};
     
-    foreach_ptr (Shader_metadata, sd, &shader->shaders)
+    foreach_ptr (Shader_metadata, sd, &shader->files)
     {
-        da_push(&compile_shaders, rd_load_shader(*sd));
+        da_push(&compile_shaders, rd_load_a_shader(*sd));
         if (!da_top(&compile_shaders))
         {
             foreach_ptr (Shader_id, id, &compile_shaders)
@@ -584,8 +598,7 @@ bool rd_reload_shader(Shader *shader, set_uniform_fun_t uniform_setter, void *un
     if (!success)
     {
         glGetProgramInfoLog(new_shader_program, sizeof(print_buffer), NULL, print_buffer);
-        printf("[ERROR] shader LINKING_FAILED\n");
-        printf("%s\n", print_buffer);
+        rd_log(rd_error, "shader linking failed:\n%s", print_buffer);
 
         return false; // no state change
     }
@@ -593,14 +606,97 @@ bool rd_reload_shader(Shader *shader, set_uniform_fun_t uniform_setter, void *un
     glValidateProgram(new_shader_program);
     
     // only if function exist
-    if (!(uniform_setter ? uniform_setter(new_shader_program, uniform_setter_arg) : true))
+    if (!(shader->static_uniform_setter ? shader->static_uniform_setter(new_shader_program, uniform_setter_arg) : true))
     {
-        printf("[WARNING] failed to set uniform, no reload\n");
+        rd_log(rd_warning, "failed to set uniform, no reload");
         return false;
     }
 
-    glDeleteProgram(shader->shader_program);
-    shader->shader_program = new_shader_program;
-    printf("[INFO] shader reload successfuly\n");
+    if (shader->program) glDeleteProgram(shader->program);
+    shader->program = new_shader_program;
     return true;
+}
+
+static void rd_successful_shader_load(const Shader *shader, bool is_reload)
+{              
+    if (is_reload) rd_log(rd_info, "shader reloaded successfuly");
+    else rd_log(rd_info, "shader loaded successfuly");
+    
+    foreach_ptr (Shader_metadata, it, &shader->files)
+    {
+        printf("\t%s: ", it->file_path);
+        switch (it->type)
+        {
+        case GL_VERTEX_SHADER: printf("vertex shader"); break;
+        case GL_GEOMETRY_SHADER: printf("geometry shader"); break;
+        case GL_FRAGMENT_SHADER: printf("fragment shader"); break;
+        default: UNREACHABLE("");
+        }
+        printf("\n");
+    }
+}
+
+bool rd_reload_shader(Shader *shader, void *uniform_setter_arg)
+{
+    bool res = rd_dummy_reload_shader(shader, uniform_setter_arg);
+    if (res) rd_successful_shader_load(shader, true);//rd_log(rd_info, "shader reload successfuly");
+    return res;
+}
+
+// va_list: pair of const char* shader name and shader type 
+bool _rd_load_shader(Shader *res, Uniform_setter_fun_t uniform_setter, void *uniform_setter_arg, ...)
+{
+    res->static_uniform_setter = uniform_setter;
+
+    va_list args;
+    va_start(args, uniform_setter_arg);
+
+    char const* shader_path = NULL;
+    GLenum type = 0;
+    
+    while (1)
+    {
+        shader_path = va_arg(args, char const*);
+        if (shader_path == NULL) break;
+
+        type = va_arg(args, GLenum);
+        if (type == 0)
+        {
+            da_free(&res->files);
+            *res = (Shader){0};
+            rd_log(rd_error, "exptected a type not a NULL in va_list");
+            return false;
+        }
+        if (type != GL_VERTEX_SHADER 
+         && type != GL_GEOMETRY_SHADER
+         && type != GL_FRAGMENT_SHADER
+        ) {
+            da_free(&res->files);
+            *res = (Shader){0};
+            rd_log(rd_error, "exptected a type in the following GL_VERTEX_SHADER, GL_GEOMETRY_SHADER or GL_FRAGMENT_SHADER got %x", type);
+            return false;
+        }
+        da_push(&res->files, ((Shader_metadata){
+            .file_path = shader_path,
+            .type = type
+        }));
+    }
+    if (res->files.size == 0)
+    {
+        da_free(&res->files);
+        *res = (Shader){0};
+        rd_log(rd_warning, "no shader path provided");
+        return false;
+    }
+
+    va_end(args);
+    bool no_err = rd_dummy_reload_shader(res, uniform_setter_arg);
+    if (no_err) rd_successful_shader_load(res, false);
+
+    return no_err;
+}
+
+void rd_unload_shader(Shader *shader)
+{
+    glDeleteProgram(shader->program);
 }

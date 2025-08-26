@@ -142,14 +142,29 @@ typedef struct Shader_metadata
     char const* file_path;
 } Shader_metadata;
 DA_TYPEDEF_ARRAY(Shader_metadata);
+typedef bool (*Uniform_setter_fun_t)(Shader_programme_id, void*);
 typedef struct Shader
 {
-    Shader_programme_id shader_program;
-    da_Shader_metadata shaders;
+    Shader_programme_id program;
+    da_Shader_metadata files;
+    Uniform_setter_fun_t static_uniform_setter;
 } Shader;
-typedef bool (*set_uniform_fun_t)(Shader_programme_id, void*);
 
-bool rd_reload_shader(Shader *shader, set_uniform_fun_t uniform_setter, void *uniform_setter_arg);
+typedef enum Rd_log_level
+{
+    rd_info,
+    rd_warning,
+    rd_error,
+    rd_count
+} Rd_log_level;
+#define rd_log(level, msg, ...) _rd_log(level, __LINE__, __FILE__, msg, ##__VA_ARGS__)
+void _rd_log(Rd_log_level level, int line, const char *file, const char *msg, ...);
+
+
+bool rd_reload_shader(Shader *shader, void *uniform_setter_arg);
+#define rd_load_shader(shader_ptr, static_uniform_setter, uniform_setter_arg, ...) _rd_load_shader(shader_ptr, static_uniform_setter, uniform_setter_arg, __VA_ARGS__, NULL)
+bool _rd_load_shader(Shader *res, Uniform_setter_fun_t uniform_setter, void *uniform_setter_arg, ...);
+void rd_unload_shader(Shader *shader);
 
 // Shader_id loadShader();
 // char *, shader_names

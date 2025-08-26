@@ -149,39 +149,39 @@ void zoom_scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
 void camera_mouvement_input(Window *win)
 {
     const float mouv_speed = 1. / win->render->frame_time.fps
-                                / win->rd.cam.zoom;
-    // const float mouv_speed = 1.0 / (win->rd.cam.zoom * 16.0);
+                                / win->wrd_render.cam.zoom;
+    // const float mouv_speed = 1.0 / (win->wrd_render.cam.zoom * 16.0);
     if (rd_is_key_down(GLFW_KEY_D))
     {
-        win->rd.cam.target.x += mouv_speed;
-        printf("right cam target.x = %f", win->rd.cam.target.x);
+        win->wrd_render.cam.target.x += mouv_speed;
+        printf("right cam target.x = %f", win->wrd_render.cam.target.x);
         UPDATE_LINE;
     }
     if (rd_is_key_down(GLFW_KEY_A))
     {
-        win->rd.cam.target.x -= mouv_speed;
-        printf("left cam target.x = %f", win->rd.cam.target.x);
+        win->wrd_render.cam.target.x -= mouv_speed;
+        printf("left cam target.x = %f", win->wrd_render.cam.target.x);
         UPDATE_LINE;
     }
     if (rd_is_key_down(GLFW_KEY_W))
     {
-        win->rd.cam.target.y -= mouv_speed;
-        printf("up cam target.y = %f", win->rd.cam.target.y);
+        win->wrd_render.cam.target.y -= mouv_speed;
+        printf("up cam target.y = %f", win->wrd_render.cam.target.y);
         UPDATE_LINE;
     }    
     if (rd_is_key_down(GLFW_KEY_S))
     {
-        win->rd.cam.target.y += mouv_speed;
-        printf("down cam target.y = %f", win->rd.cam.target.y);
+        win->wrd_render.cam.target.y += mouv_speed;
+        printf("down cam target.y = %f", win->wrd_render.cam.target.y);
         UPDATE_LINE;
     }
-    zoom_ptr = &win->rd.cam.zoom;
+    zoom_ptr = &win->wrd_render.cam.zoom;
 }
 
 static bool is_mouse_colliding_World_Rec(Window *win, Rect rec)
 {
     return rd_collision_Vec2_Rect(
-        rd_get_screen_to_world(win->rd.cam, rd_get_cursor_pos()),
+        rd_get_screen_to_world(win->wrd_render.cam, rd_get_cursor_pos()),
         rec 
     );
 }
@@ -637,7 +637,7 @@ void inputs(Window *win)
      && rd_is_mouse_button_released(GLFW_MOUSE_BUTTON_LEFT))
         win->ui.is_button_clicked = false;
     
-        
+    
     if (ui->in_main_menu)
         main_menu(win);
     else

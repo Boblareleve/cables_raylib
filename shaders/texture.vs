@@ -1,25 +1,20 @@
 #version 410 core
-#version 410 core
-layout (location = 0) in vec2 aPos;
-layout (location = 1) in uint index;
+layout (location = 0) in vec2 chunk_pos;
 
+// uniform usamplerBuffer chunks; // TBO binding
+uniform vec2 campos;
+uniform float camzoom;
+uniform float ratio;
 
-// layout (location = 0) in vec3 aPos;
-// layout (location = 1) in vec3 aColor;
-// layout (location = 2) in vec2 aTexCoord;
-
-out vec3 ourColor;
-out vec2 TexCoord;
+out uint v_index;
+out uint v_part;
 
 void main()
 {
-	int a = 0;
-    int b = 0;
-    a = a & b;
-    a = a | b;
+	v_index = gl_VertexID / 4;
+	v_part  = gl_VertexID % 4;
 
-	gl_Position = vec4(aPos, 1.0);
-	ourColor = aColor;
-	TexCoord = vec2(aTexCoord.x, aTexCoord.y);
+	vec2 cam_ratio_zoom = camzoom / vec2(ratio, 1.0);
+    vec2 chunk_pos_screen = cam_ratio_zoom * (chunk_pos - vec2(campos.x, -campos.y));
+	gl_Position = vec4(chunk_pos_screen, 0.0, 1.0);
 }
-

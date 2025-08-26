@@ -385,7 +385,7 @@ typedef struct Window
     
     Texs  texs;
 
-    Render_world rd;
+    Render_world wrd_render;
 
 
     Option option;

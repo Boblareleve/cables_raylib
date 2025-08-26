@@ -1,6 +1,5 @@
 #version 410 core
 layout (location = 0) in vec2 chunk_pos;
-layout (location = 1) in uint index;
 
 out uint v_index;
 out uint v_part;

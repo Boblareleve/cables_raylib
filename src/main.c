@@ -66,8 +66,7 @@ void set_rd_opengl_objects(struct Render_world *rw)
         rw->vertices.arr, 
         GL_DYNAMIC_DRAW
     );
-
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 2, (void*)0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(Vec2), (void*)0);
     glEnableVertexAttribArray(0);
 
     // glBufferSubData // mod part of buffer
@@ -89,48 +88,6 @@ void set_rd_opengl_objects(struct Render_world *rw)
 }
 
 
-Render_world render_init(Texs *texs)
-{
-    printf("width %f height %f\n", rd_get_screen_width(), rd_get_screen_height());
-    
-    Render_world res = { 
-        // .cam = {
-        //     .target = (Vec2){ rd_get_screen_width() / 2, rd_get_screen_width() / 2 }, // Camera offset (displacement from target)
-        //     .zoom = rd_get_screen_width() / CHUNK_WORLD_SIZE
-        // },
-        .cam = { .target = 0, .zoom = 1 },
-        .uniform_campos_loc = -1,
-        .uniform_camzoom_loc = -1,
-        .uniform_width_loc = -1,
-        .uniform_height_loc = -1,
-        .uniform_ratio_loc = -1
-    };
-
-    Camera_print(res.cam);
-
-    da_push(&res.shader.shaders, ((Shader_metadata){
-        .file_path = "shaders/world_shaders/world.vs",
-        .type = GL_VERTEX_SHADER
-    }));
-    da_push(&res.shader.shaders, ((Shader_metadata){
-        .file_path = "shaders/world_shaders/world.gs",
-        .type = GL_GEOMETRY_SHADER
-    }));
-    da_push(&res.shader.shaders, ((Shader_metadata){
-        .file_path = "shaders/world_shaders/world.fs",
-        .type = GL_FRAGMENT_SHADER
-    }));
-    
-    if (!rd_reload_shader(&res.shader, set_uniform, texs))
-        UNREACHABLE("shader compile");
-
-
-    set_rd_opengl_objects(&res);
-
-    return res;
-}
-
-
 
 
 Window Window_make(const char *name)
@@ -145,9 +102,23 @@ Window Window_make(const char *name)
     res.wrd = (World){0};
     res.texs = Texs_make("./assets/new_atlas.png", "./assets/four_way_arrow.png");
     res.ui = Ui_make(res.render);
-    res.rd = render_init(&res.texs);
+    res.wrd_render = (Render_world){ 
+        .cam = { .target = 0, .zoom = 1 },
+        .uniform_campos_loc = -1,
+        .uniform_camzoom_loc = -1,
+        .uniform_width_loc = -1,
+        .uniform_height_loc = -1,
+        .uniform_ratio_loc = -1
+    };
+    if (!rd_load_shader(&res.wrd_render.shader,
+        set_uniform, &res.texs, 
+        "shaders/texture.vs", GL_VERTEX_SHADER,
+        "shaders/texture.gs", GL_GEOMETRY_SHADER,
+        "shaders/texture.fs", GL_FRAGMENT_SHADER
+    )) (void)0; //UNREACHABLE("shader compile");
 
-    
+
+    set_rd_opengl_objects(&res.wrd_render);
 
     rd_set_clear_color(DARKGRAY);
 
@@ -173,7 +144,7 @@ static inline bool should_update_uniforms_locs(const Render_world *rd)
 }
 void send_dynamic_uniform_to_gpu(Window *win)
 {
-    Render_world *rd = &win->rd;
+    Render_world *rd = &win->wrd_render;
 
     if (should_update_uniforms_locs(rd))
     {
@@ -183,14 +154,14 @@ void send_dynamic_uniform_to_gpu(Window *win)
         //     (char*[]){ "campos", "camzoom", "width", "height", "ratio" },
         //     rd->uniform_locs
         // );
-        rd->uniform_campos_loc  = glGetUniformLocation(rd->shader.shader_program, "campos");
-        rd->uniform_camzoom_loc = glGetUniformLocation(rd->shader.shader_program, "camzoom");
-        rd->uniform_width_loc = glGetUniformLocation(rd->shader.shader_program, "width");
-        rd->uniform_height_loc = glGetUniformLocation(rd->shader.shader_program, "height");
-        rd->uniform_ratio_loc = glGetUniformLocation(rd->shader.shader_program, "ratio");
+        rd->uniform_campos_loc  = glGetUniformLocation(rd->shader.program, "campos");
+        rd->uniform_camzoom_loc = glGetUniformLocation(rd->shader.program, "camzoom");
+        rd->uniform_width_loc = glGetUniformLocation(rd->shader.program, "width");
+        rd->uniform_height_loc = glGetUniformLocation(rd->shader.program, "height");
+        rd->uniform_ratio_loc = glGetUniformLocation(rd->shader.program, "ratio");
     }
     
-    glUseProgram(rd->shader.shader_program);
+    glUseProgram(rd->shader.program);
     glUniform2f(rd->uniform_campos_loc, rd->cam.target.x, rd->cam.target.y);
     glUniform1f(rd->uniform_camzoom_loc, rd->cam.zoom);
     glUniform1f(rd->uniform_width_loc, rd_get_screen_width());
@@ -217,7 +188,7 @@ int main(void)
     Window win = Window_make("main");
     
 
-    if (1) 
+    /* if (1) 
     { // load world
         char *err_world = load_World("./save/world1.wrd", &win.wrd);
         if (err_world) {
@@ -225,19 +196,110 @@ int main(void)
             printf("%s\n", err_world);
             win.wrd = World_make("main");
         }
-    }
+    } */
 
+    // Render *render = rd_init("name", 500, 500, NULL); UNUSED(render);
+    // rd_set_clear_color(DARKGRAY);
+
+
+    float vvv[][2] = {
+        /* {0, 0},
+        {0.5, 0},
+            */{0, -0.5}
+    };
+    // Shader debug_shader = {0};
+    // if (!rd_load_shader(&debug_shader, set_uniform, &win.texs,
+    //     "shaders/texture.vs", GL_VERTEX_SHADER,
+    //     "shaders/texture.gs", GL_GEOMETRY_SHADER,
+    //     "shaders/texture.fs", GL_FRAGMENT_SHADER
+    // )) assert(0);
+    // GLuint VAO = 0;
+    // GLuint VBO = 0;
+    // {
+    //     glGenVertexArrays(1, &VAO);
+    //     glGenBuffers(1, &VBO);
+    //     glBindVertexArray(VAO);
+    //     glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    //     glBufferData(GL_ARRAY_BUFFER, sizeof(vvv), vvv, GL_STATIC_DRAW);
+    //     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 2, (void*)0);
+    //     glEnableVertexAttribArray(0);
+    // }
+ 
+    {
+        win.wrd_render.vertices.size = 0;
+        win.wrd_render.chunk_texture.size = 0;
+        da_push(&win.wrd_render.vertices, ((Vec2){ 0, 0 }));
+        da_push(&win.wrd_render.vertices, ((Vec2){ 0, 0 }));
+        da_push(&win.wrd_render.vertices, ((Vec2){ 0, 0 }));
+        da_push(&win.wrd_render.vertices, ((Vec2){ 0, 0 }));
+        
+        da_push(&win.wrd_render.vertices, ((Vec2){ 1, 0 }));
+        da_push(&win.wrd_render.vertices, ((Vec2){ 1, 0 }));
+        da_push(&win.wrd_render.vertices, ((Vec2){ 1, 0 }));
+        da_push(&win.wrd_render.vertices, ((Vec2){ 1, 0 }));
+        
+        
+        da_push_zero(&win.wrd_render.chunk_texture);
+        da_push_zero(&win.wrd_render.chunk_texture);
+        da_push_zero(&win.wrd_render.chunk_texture);
+        da_push_zero(&win.wrd_render.chunk_texture);
+        
+        da_push_zero(&win.wrd_render.chunk_texture);
+        da_push_zero(&win.wrd_render.chunk_texture);
+        da_push_zero(&win.wrd_render.chunk_texture);
+        da_push_zero(&win.wrd_render.chunk_texture);
+        // da_push_zero(&win.wrd_render.chunk_texture);
+    }
+    
     while (!rd_should_close())
     {
-        glfwSwapInterval(1);
+        // glfwSwapInterval(1);
         if (rd_is_key_down(GLFW_KEY_ESCAPE)) rd_set_to_close();
         if (rd_is_key_pressed(GLFW_KEY_SPACE)) 
-            rd_reload_shader(&win.rd.shader, set_uniform, &win.texs);
+            rd_reload_shader(&win.wrd_render.shader, &win.texs);
+        // if (rd_is_key_pressed(GLFW_KEY_SPACE)) 
+        //     rd_reload_shader(&debug_shader, &win.texs);
         
 
         inputs(&win);
         send_dynamic_uniform_to_gpu(&win);
-        Window_draw(&win);
+        if (0) Window_draw(&win);
+        else
+        {
+            glBindBuffer(GL_ARRAY_BUFFER, win.wrd_render.VBO);
+            glBufferData(GL_ARRAY_BUFFER, sizeof(float)*2 * win.wrd_render.vertices.size, win.wrd_render.vertices.arr, GL_DYNAMIC_DRAW);
+            glUseProgram(win.wrd_render.shader.program);
+            glBindVertexArray(win.wrd_render.VBO);
+
+            printf("size %d\n", win.wrd_render.vertices.size);
+            glDrawArrays(GL_POINTS, 0, win.wrd_render.vertices.size);
+        }
+
+
+        /* if (0)
+        {
+            // glBindVertexArray(win.wrd_render.VAO);
+            // glBindBuffer(GL_ARRAY_BUFFER, win.wrd_render.VBO);
+            // glBufferData(GL_ARRAY_BUFFER, sizeof(Vec2), &vvv, GL_DYNAMIC_DRAW);
+            // glBindBuffer(GL_TEXTURE_BUFFER, win.wrd_render.TBO);
+            // glBufferSubData(
+            //     GL_TEXTURE_BUFFER, 
+            //     offset * sizeof(win.wrd_render.chunk_texture.arr[0]),
+            //     size   * sizeof(win.wrd_render.chunk_texture.arr[0]),
+            //     &win.wrd_render.chunk_texture.arr[offset]
+            // );
+            // glUseProgram(win.wrd_render.shader.program);
+            // glBindVertexArray(win.wrd_render.VAO);
+            // glBindBuffer(GL_ARRAY_BUFFER, win.wrd_render.VBO);
+            // glDrawArrays(GL_POINTS, 0, 1);
+        
+        }
+        else if (1)
+        {
+            glUseProgram(debug_shader.program);
+            glBindVertexArray(VAO);
+            glDrawArrays(GL_POINTS, 0, ARRAY_LEN(vvv));
+        } */
         
         rd_end_frame();
 
@@ -245,7 +307,7 @@ int main(void)
         // UPDATE_LINE;
     }
     
-    quit(&win);
+    // quit(&win);
     
     // Window_free(&win);
     return (0);
