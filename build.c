@@ -10,7 +10,7 @@
 
 #define SRC_DIR "./src/"
 #define ENGIN_DIR "./engin/"
-#define DOT_O_DIR "./object"
+#define DOT_O_DIR "./object/"
 
 
 SA_TYPEDEF_ARRAY(Strv);
@@ -40,8 +40,8 @@ typedef struct Arg_Shell_List
     da_Strv link_flags;
     da_Strv source_files;
 
-    Strv compiler;
-    Strv bin_name;
+    Strb compiler;
+    Strb bin_name;
 
     int64_t proc_max;
 } Arg_Shell_List;
@@ -52,8 +52,8 @@ Arg_Shell_List arg_parse(const sa_Strv *args)
         .target = debug,
         .scoop =  game,
         .platform = platform_linux,
-        .compiler = Strv_cstr("cc"),
-        .bin_name = Strv_cstr("cables")
+        .compiler = (Strb){0}, //Strv_cstr("cc"),
+        .bin_name = Strb_cstr("cables")
     };
     for (int i = 1; i < args->size; i++)
     {
@@ -141,7 +141,8 @@ Arg_Shell_List arg_parse(const sa_Strv *args)
                 printf("[ERROR] missing binary name\n");
                 exit(1);
             }
-            res.bin_name = args->arr[i];
+            res.bin_name.size = 0;
+            Strb_cat_Str(&res.bin_name, args->arr[i]);
         }
         else if (Str_equal(arg, Strv_cstr("-help"))
               || Str_equal(arg, Strv_cstr("-h")))
@@ -175,18 +176,41 @@ Arg_Shell_List arg_parse(const sa_Strv *args)
             build_path.self,
             Strv_cstr("-Wall"),
             Strv_cstr("-Wextra"),
-            Strv_cstr("-Wno-missing-braces")
+            Strv_cstr("-Wno-missing-braces"),
+            Strv_cstr("-Werror=incompatible-pointer-types")
         );
-        
-        // da_print(&res.comp_flags, Str_print);
-        // printf("|\n\n");
-        
-        da_push_many(&res.link_flags, 
-            Strv_cstr("-L./lib"), 
-            Strv_cstr("-lm"),
-            Strv_cstr("-lglfw"),
-            Strv_cstr("-ldl")
-        );
+    }
+    { // platform
+
+        if (res.platform == platform_linux)
+        {
+            res.compiler = Strb_cstr("cc");
+            // da_print(&res.comp_flags, Str_print);
+            // printf("|\n\n");
+            
+            da_push_many(&res.link_flags, 
+                Strv_cstr("-L./lib"), 
+                Strv_cstr("-lm"),
+                Strv_cstr("-lglfw"),
+                Strv_cstr("-ldl")
+            );
+        }
+        else if (res.platform == platform_windows)
+        {
+            res.compiler = Strb_cstr("/mnt/c/msys64/mingw64/bin/gcc.exe");
+
+            if (!Str_end_with_cstr(res.bin_name, ".exe"))
+                Strb_cat(&res.bin_name, ".exe");
+            da_push(&res.comp_flags, Strv_cstr("-m64")); // <- target x64 bin (for 8 bytes pointers)
+
+            da_push_many(&res.link_flags, 
+                Strv_cstr("-L./lib"), 
+                Strv_cstr("-lm"),
+                Strv_cstr("-l:libglfw3.a"),
+                Strv_cstr("-lgdi32")
+            );
+        }
+        else UNREACHABLE("invalid platform");
     }
     { // mode
         if (res.mode == all)
@@ -237,12 +261,6 @@ Arg_Shell_List arg_parse(const sa_Strv *args)
                 Strv_cstr(SRC_DIR"render.c"),
                 Strv_cstr(SRC_DIR"shader.c")
             );
-
-            // da_push(&res.link_flags, 
-            //     (res.target == debug || res.target == gdb)
-            //         ? Strv_cstr("-l:libraylib_debug.a")
-            //         : Strv_cstr("-l:libraylib.a")
-            // );
         }
         else if (res.scoop == engin) 
         {
@@ -252,15 +270,55 @@ Arg_Shell_List arg_parse(const sa_Strv *args)
         }
         else UNREACHABLE("invalid scoop");
     }
-    { // platform
-        if (res.platform == platform_linux) {}
-        else if (res.platform == platform_windows)
-            TODO("windows platform");
-        else UNREACHABLE("invalid platform");
-    }
+    
     return res;
 } 
 
+
+// only support forward slash '/'
+// .size = 0 if path end with '/'
+Strv strip_file_path(Strv path)
+{
+    int last_slash = -1;
+    int i = 0;
+    for (int i = 0; i < path.size; i++)
+        if (path.arr[i] == '/')
+            last_slash = i;
+    return Strv_stride(path, last_slash+1);
+}
+Strv strip_extention(Strv file)
+{
+    return Strv_c_substr(&file, '.');
+}
+Strv get_extention(Strv file)
+{
+    Strv_c_substr(&file, '.');
+    return file;
+}
+
+Proc compile_file(Strv file, const Arg_Shell_List *args)
+{
+    static Cmd cmd = {0};
+    static Strb builder = {0};
+
+    da_push(&cmd, args->compiler.self);
+    da_push_da(&cmd, &args->comp_flags);
+
+    Strb_cat(&builder, DOT_O_DIR);
+    Strb_cat_Str(&builder, strip_extention(strip_file_path(file)));
+    Strb_cat(&builder, ".o");
+    da_push_many(&cmd,
+        file,
+        Strv_cstr("-o"),
+        builder.self
+    );
+
+    Proc res = Cmd_run(cmd);
+    builder.size = 0;
+    cmd.size = 0;
+
+    return res;
+}
 
 sa_Strv *argcv_strv(int argc, char **argv)
 {
@@ -274,19 +332,17 @@ int main(int argc, char **argv)
 {
     { // go_rebuild urself
         da_Strb rebuild_flags = {0};
-        da_push(&rebuild_flags, (Strb){0});
-        if (!Strb_catf(&da_top(&rebuild_flags), "-I%s/C/my_lib", getenv("HOME"))) return 1;
-        da_push(&rebuild_flags, (Strb){0});
-        if (!Strb_cat(&da_top(&rebuild_flags), "-Wall"))         return 1;
-        da_push(&rebuild_flags, (Strb){0});
-        if (!Strb_cat(&da_top(&rebuild_flags), "-Wextra"))       return 1;
-        da_push(&rebuild_flags, (Strb){0});
-        if (!Strb_cat(&da_top(&rebuild_flags), "-g3"))           return 1;
+        
+        da_push(&rebuild_flags, Strb_fstr("-I%s/C/my_lib", getenv("HOME")));
+        da_push(&rebuild_flags, Strb_cstr("-Wall"));
+        da_push(&rebuild_flags, Strb_cstr("-Wextra"));
+        da_push(&rebuild_flags, Strb_cstr("-ggdb"));
+        da_push(&rebuild_flags, Strb_cstr("-Wno-missing-braces"));
         if (!BUILD_GO_REBUILD_URSELF(argc, argv, rebuild_flags)) return 1;
         da_free_func(&rebuild_flags, Strb_free);
     }
 
-    // dddddddddddddddddddddddddddddd
+    // dddddddddddddddddddddddddddddddddddd
 
     sa_Strv *args = argcv_strv(argc, argv);
     if (!args) return 1;
@@ -298,13 +354,13 @@ int main(int argc, char **argv)
     if (parameters.mode == once)
     {
         Cmd cmd = {0};
-        da_push(&cmd, parameters.compiler);
+        da_push(&cmd, parameters.compiler.self);
         
         foreach_ptr (Strv, file, &parameters.source_files)
             da_push(&cmd, *file);
         
         da_push(&cmd, Strv_cstr("-o"));
-        da_push(&cmd, parameters.bin_name);
+        da_push(&cmd, parameters.bin_name.self);
 
         foreach_ptr (Strv, flag, &parameters.comp_flags)
             da_push(&cmd, *flag);
@@ -319,7 +375,35 @@ int main(int argc, char **argv)
     }
     else if (parameters.mode == all)
     {
-        TODO("do all");
+        da_Proc procs = {0};
+        foreach_ptr(Strv, src, &parameters.source_files)
+        {
+            Proc tmp = compile_file(*src, &parameters);
+            if (tmp == BUILD_INVALID_PROC) return false;
+            da_push(&procs, tmp);
+        }
+
+        foreach_ptr (Proc, proc, &procs)
+            Proc_wait(*proc);
+        da_free(&procs);
+        
+        Cmd cmd = {0};
+        da_push_many(&cmd, parameters.compiler.self, Strv_cstr("-o"), parameters.bin_name.self);
+        
+        foreach_ptr (Strv, src_files, &parameters.source_files)
+        {
+            Strb builder = {0};
+            Strb_cat(&builder, DOT_O_DIR);
+            Strb_cat_Str(&builder, strip_extention(strip_file_path(*src_files)));
+            Strb_cat(&builder, ".o");
+            Strb_cat_null(&builder);
+            
+            da_push(&cmd, builder.self);
+        }
+        da_push_da(&cmd, &parameters.link_flags);
+
+        if (!Cmd_run_wait_reset(&cmd)) return 1;
+        da_free(&cmd);
     }
     else UNREACHABLE("parse ?");
 

@@ -6,8 +6,8 @@ uniform vec2 campos;
 uniform float camzoom;
 uniform float ratio;
 
-out uint v_index;
-out uint v_part;
+out int v_index;
+out int v_part;
 
 void main()
 {

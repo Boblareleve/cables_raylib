@@ -11,7 +11,8 @@ int main()
 {
     Render *render = rd_init("test", 400, 400, NULL);
 
-    rd_set_clear_color(DARKGRAY);
+    rd_set_clear_color(GRAY);
+
 
 
     float vvv[3][2] = {
@@ -27,11 +28,9 @@ int main()
             &debug_shader,
             NULL,
             NULL,
-            "shaders/texture.vs",
+            "shaders/rect.vs",
             GL_VERTEX_SHADER,
-            "shaders/texture.gs",
-            GL_GEOMETRY_SHADER,
-            "shaders/texture.fs",
+            "shaders/rect.fs",
             GL_FRAGMENT_SHADER
         )) assert(0);
 
@@ -56,7 +55,7 @@ int main()
 
         glUseProgram(debug_shader.program);
         glBindVertexArray(VAO);
-        glDrawArrays(GL_POINTS, 0, ARRAY_LEN(vvv));
+        glDrawArrays(GL_TRIANGLES, 0, ARRAY_LEN(vvv));
         rd_end_frame();
     }
 

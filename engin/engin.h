@@ -233,17 +233,17 @@ typedef struct
 
 
 extern void Chunk_print(const Chunk*);
-__attribute_maybe_unused__ static void Item_chunks_print(const Item_chunks value)
+__attribute__((unused)) static void Item_chunks_print(const Item_chunks value)
 {
     if (value.data)
         Chunk_print(value.data);
     else printf("No chunk");
 }
-__attribute_maybe_unused__ static uint64_t Item_chunks_hash(const Item_chunks value, uint64_t seed) 
+__attribute__((unused)) static uint64_t Item_chunks_hash(const Item_chunks value, uint64_t seed) 
 {
     return value.pos.packed ^ (seed << 1);
 }
-__attribute_maybe_unused__ static int Item_chunks_equal(const Item_chunks value1, const Item_chunks value2) 
+__attribute__((unused)) static int Item_chunks_equal(const Item_chunks value1, const Item_chunks value2) 
 {
     return value1.pos.packed == value2.pos.packed;
 }

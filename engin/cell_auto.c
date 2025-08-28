@@ -102,6 +102,7 @@ Chunk *add_Chunk(World *parent, Pos pos)
 
     build->data->pos = pos;
     build->data->parent = parent;
+    build->data->render.index_buffer = -1;
     
     memset(build->data->arr, 0, sizeof(build->data->arr[0]) * W * H);
 

@@ -138,9 +138,9 @@ void zoom_scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
         MAX(
             expf(log(*zoom_ptr) + ( yoffset + xoffset ) * 0.1),
             // 0.01f
-            0.00001f
+            0.01f
         ),
-        200.0f
+        32.0f
     );
     printf("zoom in or out (zoom: %f)", *zoom_ptr);
     UPDATE_LINE;
@@ -629,8 +629,13 @@ void main_menu(Window *win)
 
 void inputs(Window *win)
 {
+    if (rd_is_key_down(GLFW_KEY_ESCAPE)) rd_set_to_close();
+    if (rd_is_key_pressed(GLFW_KEY_SPACE)) 
+        rd_reload_shader(&win->wrd_render.shader, &win->texs);
+        
+
     win->ui.old_mouse_pos = win->ui.mouse_pos;
-    win->ui.mouse_pos = /* rdTODO screen_to_Pos */  VEC2_TO_POS(rd_get_cursor_pos(win->render));
+    win->ui.mouse_pos = /* rdTODO screen_to_Pos */  VEC2_TO_POS(rd_get_cursor_pos());
     Ui *ui = &win->ui;
 
     if (win->ui.is_button_clicked
@@ -690,7 +695,6 @@ void inputs(Window *win)
         simulation_input(win);
     
     }
-    ui->is_button_clicked = false;
 }
 
 Ui Ui_make(Render *render)
@@ -717,15 +721,18 @@ Ui Ui_make(Render *render)
             (void*)0
         );
         glEnableVertexAttribArray(0);
+        
         glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(Ui_vertex_data), 
             (void*)sizeof((Ui_vertex_data){0}.box)
         );
         glEnableVertexAttribArray(1);
+
         glVertexAttribPointer(2, 1, GL_UNSIGNED_INT, GL_FALSE, sizeof(Ui_vertex_data), 
             (void*)(sizeof((Ui_vertex_data){0}.box) 
                   + sizeof((Ui_vertex_data){0}.color))
         );
         glEnableVertexAttribArray(2);
+
         glVertexAttribPointer(3, 1, GL_UNSIGNED_INT, GL_FALSE, sizeof(Ui_vertex_data), 
             (void*)(sizeof((Ui_vertex_data){0}.box)
                   + sizeof((Ui_vertex_data){0}.color)

@@ -148,6 +148,10 @@ typedef struct Shader
     Shader_programme_id program;
     da_Shader_metadata files;
     Uniform_setter_fun_t static_uniform_setter;
+
+    int tiu_vertex_dispatcher;
+    int tiu_geometry_dispatcher;
+    int tiu_fragment_dispatcher;
 } Shader;
 
 typedef enum Rd_log_level
@@ -165,6 +169,7 @@ bool rd_reload_shader(Shader *shader, void *uniform_setter_arg);
 #define rd_load_shader(shader_ptr, static_uniform_setter, uniform_setter_arg, ...) _rd_load_shader(shader_ptr, static_uniform_setter, uniform_setter_arg, __VA_ARGS__, NULL)
 bool _rd_load_shader(Shader *res, Uniform_setter_fun_t uniform_setter, void *uniform_setter_arg, ...);
 void rd_unload_shader(Shader *shader);
+int rd_dispatch_texture_unit(Shader *shader, GLenum stage);
 
 // Shader_id loadShader();
 // char *, shader_names
@@ -172,16 +177,16 @@ void rd_unload_shader(Shader *shader);
 
 
 Render *rd_init(const char *title, int width, int height, rd_resize_callback_t callback);
-void rd_deinit();
+void rd_deinit(void);
 
 void rd_set_clear_color(Color clear_color);
 
 
-bool rd_should_close();
-void rd_set_to_close();
+bool rd_should_close(void);
+void rd_set_to_close(void);
 // function to be call each frame
 // swapbuffers -> calculate frame time -> poll inputs
-void rd_end_frame();
+void rd_end_frame(void);
 
 Texture rd_load_texture(const char *tex_name, int tex_unit_index);
 
@@ -196,7 +201,7 @@ bool rd_is_key_released(int key);
 
 
 // mouse
-Vec2 rd_get_cursor_pos();
+Vec2 rd_get_cursor_pos(void);
 
 Key_state rd_get_mouse_button_state(int button);
 bool rd_is_mouse_button_down(int button);
@@ -207,12 +212,12 @@ bool rd_is_mouse_button_released(int button);
 bool rd_Button(Button *button);
 void draw_Button(Button button);
 
-int rd_get_fps();
-float rd_get_delta_time();
-float rd_get_target_fps();
-float rd_get_screen_width();
-float rd_get_screen_height();
-float rd_get_screen_ratio();
+int rd_get_fps(void);
+float rd_get_delta_time(void);
+float rd_get_target_fps(void);
+float rd_get_screen_width(void);
+float rd_get_screen_height(void);
+float rd_get_screen_ratio(void);
 Vec2 rd_get_screen_to_world(Camera cam, Vec2 pos);
 
 Rect Rect_transform_by_Camera(Camera cam, Rect rec);

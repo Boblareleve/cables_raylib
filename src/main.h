@@ -7,6 +7,7 @@
 // #include "rlgl.h"
 // #include "raymath.h"
 // #include "raygui.h"
+
 #include "render.h"
 
 /* std */
@@ -45,6 +46,10 @@
 
 #define CHUNK_WORLD_SIZE 256
 
+
+static_assert(sizeof(void*) == 8);
+static_assert(sizeof(int) == 4);
+static_assert(sizeof(long long) == 8);
 
 
 /* function like macro */
@@ -352,8 +357,9 @@ typedef struct Render_world
             GLint uniform_width_loc;
             GLint uniform_height_loc;
             GLint uniform_ratio_loc;
+            GLint uniform_chunks_loc;
         };
-        GLint uniform_locs[5];
+        GLint uniform_locs[6];
     };
 
 
@@ -362,7 +368,7 @@ typedef struct Render_world
     Camera cam;
 
     da_ptr_Chunk chunks;
-    da_Vec2 vertices;
+    da_Vec24 vertices;
     da_Chunk_raw chunk_texture;
 
 
@@ -370,6 +376,7 @@ typedef struct Render_world
     TBO_id VBO;
     TBO_id TBO;
     Texture_id TEX;
+    int TBO_texture_unit;
 } Render_world;
 
 

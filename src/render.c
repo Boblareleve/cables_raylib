@@ -130,9 +130,6 @@ static GLFWwindow *init_GLFWwindow(const char *title, int width, int height)
         return NULL;
     }
     
-    glEnable(GL_BLEND);
-    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-    
 
 #ifdef DEBUG 
 
@@ -148,15 +145,18 @@ static GLFWwindow *init_GLFWwindow(const char *title, int width, int height)
     }
 #endif
     
-    
     glViewport(0, 0, width, height);
+    rd_set_clear_color(GRAY);
+    glClear(GL_COLOR_BUFFER_BIT);
+    glfwSwapBuffers(window);
+
     return window;
 }
-bool rd_should_close()
+bool rd_should_close(void)
 {
     return (glfwWindowShouldClose(current_render->glfw) || current_render->to_close);
 }
-void rd_set_to_close()
+void rd_set_to_close(void)
 {
     current_render->to_close = true;
 }
@@ -179,7 +179,7 @@ Texture rd_load_texture(const char *tex_name, int tex_unit_index)
         .texture_unit  = tex_unit_index,
         .loc = -1
     };
-
+    
     glGenTextures(1, &res.id); 
     glActiveTexture(GL_TEXTURE0 + tex_unit_index); // activate the texture unit first before binding texture
     glBindTexture(GL_TEXTURE_2D, res.id);
@@ -198,7 +198,8 @@ Texture rd_load_texture(const char *tex_name, int tex_unit_index)
     
     // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
     // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_LINEAR);
+    // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     
 
@@ -221,7 +222,7 @@ Texture rd_load_texture(const char *tex_name, int tex_unit_index)
 
 
 
-static void rd_poll_inputs()
+static void rd_poll_inputs(void)
 {
     glfwPollEvents();
     foreach_static (size_t, i, current_render->inputs.keys)
@@ -278,19 +279,34 @@ static void rd_poll_inputs()
         default: break;
         }
 }
-static void rd_calculate_frame_time()
+static void rd_calculate_frame_time(void)
 {
     current_render->frame_time.start_frame_time = current_render->frame_time.end_frame_time;
     current_render->frame_time.end_frame_time = glfwGetTime();
     current_render->frame_time.delta_time = current_render->frame_time.end_frame_time - current_render->frame_time.start_frame_time;
     current_render->frame_time.fps = (int)(1. / current_render->frame_time.delta_time);
 }
-void rd_end_frame()
+
+static void fun_swap_buffers(GLFWwindow *window)
 {
-    glfwSwapBuffers(current_render->glfw);
-    rd_calculate_frame_time(current_render);
-    rd_poll_inputs(current_render);
-    glClear(GL_COLOR_BUFFER_BIT);
+    glfwSwapBuffers(window);
+}
+static void fun_glClear(void)
+{
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    // glClearDepth();
+}
+
+void rd_end_frame(void)
+{
+    fun_swap_buffers(current_render->glfw);
+    rd_calculate_frame_time();
+
+    // glBlendFunc(GL_SRC_ALPHA, GL_ONE);
+    // glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_DST_COLOR);
+    // glBlendFunc(GL_SRC_ALPHA, GL_DST_COLOR);
+    fun_glClear();
+    rd_poll_inputs();
 }
 void rd_set_clear_color(Color clear_color)
 {
@@ -334,7 +350,7 @@ bool rd_is_key_released(int key)
     return false;
 }
 
-Vec2 rd_get_cursor_pos()
+Vec2 rd_get_cursor_pos(void)
 {
     double dx = 0.0;
     double dy = 0.0;
@@ -415,27 +431,27 @@ void draw_Button(Button button)
 /* #pragma region // coordinate */
 
 
-int rd_get_fps()
+int rd_get_fps(void)
 {
     return current_render->frame_time.fps;
 }
-float rd_get_delta_time()
+float rd_get_delta_time(void)
 {
     return current_render->frame_time.delta_time;
 }
-float rd_get_target_fps()
+float rd_get_target_fps(void)
 {
     return current_render->frame_time.target_fps;
 }
-float rd_get_screen_width()
+float rd_get_screen_width(void)
 {
     return current_render->screen_width;
 }
-float rd_get_screen_height()
+float rd_get_screen_height(void)
 {
     return current_render->screen_height;
 }
-float rd_get_screen_ratio()
+float rd_get_screen_ratio(void)
 {
     return current_render->screen_ratio;
 }
@@ -489,7 +505,7 @@ Render *rd_init(const char *title, int width, int height, rd_resize_callback_t c
 
     res->frame_time.target_fps = 60;
     res->frame_time.start_frame_time = glfwGetTime();
-    rd_calculate_frame_time(res);
+    rd_calculate_frame_time();
 
     if (!res->glfw)
     {
@@ -511,7 +527,7 @@ Render *rd_init(const char *title, int width, int height, rd_resize_callback_t c
     return res;
 }
 
-void rd_deinit()
+void rd_deinit(void)
 {
     glfwDestroyWindow(current_render->glfw);
     glfwTerminate();
@@ -560,6 +576,7 @@ static Shader_id rd_load_a_shader(Shader_metadata data)
     return gl_shader;
 }
 
+#define CALL_IF_NNULL(fun, ...) (fun ? fun(__VA_ARGS__) : true)
 // static_uniform_setter -> for uniform that don't change often
 static bool rd_dummy_reload_shader(Shader *shader, void *uniform_setter_arg)
 {
@@ -606,7 +623,7 @@ static bool rd_dummy_reload_shader(Shader *shader, void *uniform_setter_arg)
     glValidateProgram(new_shader_program);
     
     // only if function exist
-    if (!(shader->static_uniform_setter ? shader->static_uniform_setter(new_shader_program, uniform_setter_arg) : true))
+    if (!CALL_IF_NNULL(shader->static_uniform_setter, new_shader_program, uniform_setter_arg))
     {
         rd_log(rd_warning, "failed to set uniform, no reload");
         return false;
@@ -694,6 +711,57 @@ bool _rd_load_shader(Shader *res, Uniform_setter_fun_t uniform_setter, void *uni
     if (no_err) rd_successful_shader_load(res, false);
 
     return no_err;
+}
+
+#define RD_MAKE_GET_EASY(ret_T, gl_get_fun, gl_enum)\
+    static ret_T rd_get_ ## gl_enum()\
+    {\
+        ret_T res = 0;\
+        gl_get_fun(gl_enum, &res);\
+        return res;\
+    }
+
+RD_MAKE_GET_EASY(int, glGetIntegerv, GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS)
+RD_MAKE_GET_EASY(int, glGetIntegerv, GL_MAX_TEXTURE_IMAGE_UNITS)
+RD_MAKE_GET_EASY(int, glGetIntegerv, GL_MAX_VERTEX_TEXTURE_IMAGE_UNITS)
+RD_MAKE_GET_EASY(int, glGetIntegerv, GL_MAX_GEOMETRY_TEXTURE_IMAGE_UNITS)
+
+// -1 on error
+int rd_dispatch_texture_unit(Shader *shader, GLenum stage)
+{
+    static int max_combined_tiu = -1;
+    if (max_combined_tiu == -1) max_combined_tiu = rd_get_GL_MAX_COMBINED_TEXTURE_IMAGE_UNITS();
+    static int max_vertex_tiu   = -1;
+    if (max_vertex_tiu == -1) max_vertex_tiu = rd_get_GL_MAX_VERTEX_TEXTURE_IMAGE_UNITS();
+    static int max_geometry_tiu = -1;
+    if (max_geometry_tiu == -1) max_geometry_tiu = rd_get_GL_MAX_GEOMETRY_TEXTURE_IMAGE_UNITS();
+    static int max_fragment_tiu = -1;
+    if (max_fragment_tiu == -1) max_fragment_tiu = rd_get_GL_MAX_TEXTURE_IMAGE_UNITS();
+
+    if (max_combined_tiu >= shader->tiu_vertex_dispatcher
+                          + shader->tiu_geometry_dispatcher 
+                          + shader->tiu_fragment_dispatcher)
+        return -1;
+    
+    switch (stage)
+    {
+    case GL_VERTEX_SHADER:
+        if (max_vertex_tiu >= shader->tiu_vertex_dispatcher)
+            return -1;
+        return shader->tiu_vertex_dispatcher++;
+
+    case GL_GEOMETRY_SHADER:
+        if (max_geometry_tiu >= shader->tiu_geometry_dispatcher)
+            return -1;
+        return shader->tiu_geometry_dispatcher++;
+
+    case GL_FRAGMENT_SHADER:
+        if (max_fragment_tiu >= shader->tiu_fragment_dispatcher)
+            return -1;
+        return shader->tiu_fragment_dispatcher++;
+
+    default: UNREACHABLE("[ERROR] invalide shader stage");
+    }
 }
 
 void rd_unload_shader(Shader *shader)

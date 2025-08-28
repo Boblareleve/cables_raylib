@@ -1,12 +1,13 @@
 #include "main.h"
 
+extern int texture_unit_count;
 Texs Texs_make(const char *atlas_name, const char *paste_mouver_name)
 {
-    Texs res = {
-        .atlas = rd_load_texture(atlas_name, 0),
-        .paste_mouver = rd_load_texture(paste_mouver_name, 1),
-        .cell_size = W
-    };
+    Texs res = {0};
+    res.atlas = rd_load_texture(atlas_name, texture_unit_count++);
+    res.paste_mouver = rd_load_texture(paste_mouver_name, texture_unit_count++);
+    res.cell_size = W;
+    
     foreach_static (size_t, i, res.tex_array)
         assert(res.tex_array[i].id);
 
@@ -29,19 +30,25 @@ void Texs_free(Texs *texs)
 static inline void Chunk_push(Window *win, Chunk *chunk)
 {
     chunk->render.index_buffer = win->wrd_render.chunk_texture.size;
-
-    da_push_array(&win->wrd_render.chunk_texture, chunk->arr);
-    static_assert(sizeof(chunk->arr) == 256);
-    static_assert(sizeof(win->wrd_render.chunk_texture.arr[0]) == 256);
+    // da_push_array(&win->wrd_render.chunk_texture, exemple);
+    /* Chunk_raw_2D tmp = {0};
+    memcpy(tmp, chunk->arr, sizeof(Chunk_raw));
+    printf("chunk %p:\n", (void*)chunk);
+    for (int y = 15; y >= 0; y--)
+    {
+        for (int x = 0; x < 16; x++)
+            printf("%02u ", tmp[x][y]);
+        printf("\n");
+    } */
     
-    // da_push_array(&win->wrd_render.vertices, ((Vec24){
-    //     POS_TO_VEC2(chunk->pos), 
-    //     POS_TO_VEC2(chunk->pos),
-    //     POS_TO_VEC2(chunk->pos),
-    //     POS_TO_VEC2(chunk->pos)
-    // }));
-    da_push(&win->wrd_render.vertices, POS_TO_VEC2(chunk->pos));
-    static_assert(sizeof(chunk->pos) == 4 * 2);
+    da_push_array(&win->wrd_render.chunk_texture, chunk->arr);
+
+    da_push_array(&win->wrd_render.vertices, ((Vec24){
+        POS_TO_VEC2(chunk->pos), 
+        POS_TO_VEC2(chunk->pos),
+        POS_TO_VEC2(chunk->pos),
+        POS_TO_VEC2(chunk->pos)
+    }));
 }
 
 // offset, size (index) 
@@ -56,9 +63,12 @@ static inline void Chunk_push_gpu(Window *win, int offset, int size)
         size   * sizeof(win->wrd_render.vertices.arr[0]),
         &win->wrd_render.vertices.arr[offset]
     );
+
+    glActiveTexture(GL_TEXTURE0 + win->wrd_render.TBO_texture_unit);
     glBindBuffer(GL_TEXTURE_BUFFER, win->wrd_render.TBO);
+    glBindTexture(GL_TEXTURE_BUFFER, win->wrd_render.TEX);
     glBufferSubData(
-        GL_TEXTURE_BUFFER,
+        GL_TEXTURE_BUFFER, 
         offset * sizeof(win->wrd_render.chunk_texture.arr[0]),
         size   * sizeof(win->wrd_render.chunk_texture.arr[0]),
         &win->wrd_render.chunk_texture.arr[offset]
@@ -112,13 +122,22 @@ void reset_chunk_to_draw(Window *win)
 
 void World_draw(Window *win)
 {
-    const Pos lu_ws = get_chunk_Pos(screen_to_Pos(win->wrd_render.cam, (Vec2){0, 0}));
-    Camera_print(win->wrd_render.cam);
-    const Pos TMP = screen_to_Pos(win->wrd_render.cam, (Vec2){0, 0});
-    printf("{0,0} to screen %d,%d\n", TMP.x, TMP.y);
+    // Camera_print(win->wrd_render.cam);
+    const Pos tmp = screen_to_Pos(win->wrd_render.cam, (Vec2){0, 0});
+    
+    // Vec2 world_vec = rd_get_screen_to_world(win->wrd_render.cam, (Vec2){0});
+    // printf(" -> ");
+    // v2_print(world_vec);
+    // printf("\n");
+    
+    Pos lu_ws = get_chunk_Pos(screen_to_Pos(win->wrd_render.cam, (Vec2){0, 0}));
+    Pos rd_ws = get_chunk_Pos(screen_to_Pos(win->wrd_render.cam, (Vec2){ win->render->screen_width, win->render->screen_height }));
+    
+    lu_ws = (Pos){ -1,  1 };
+    rd_ws = (Pos){  1, -1 };
 
-    const Pos rd_ws = get_chunk_Pos(screen_to_Pos(win->wrd_render.cam, (Vec2){ win->render->screen_width, win->render->screen_height }));
-    printf("form chunk %d,%d to %d,%d\n", 
+    // printf("{0,0} to screen %d,%d\n", tmp.x, tmp.y);
+    if (0) printf("form chunk %d,%d to %d,%d\n", 
         lu_ws.x,
         lu_ws.y,
         rd_ws.x,
@@ -138,10 +157,11 @@ void World_draw(Window *win)
     // win->wrd_render.vertices.size -> how many chunk I draw (might be reduce in the vertex shader)
     // win->wrd_render.max_visible_chunk -> the numbre of chunk I should draw MAX
 
-    // if too many for buffer or 50% + chunk are not visible
+    // if too many for buffer or 50%+ chunk are not visible
     if (win->wrd_render.chunks.size >= (double)win->wrd_render.max_visible_chunk
      || (double)draw_count < 0.5 * win->wrd_render.chunks.size
     ) {
+        assert(0);
         reset_chunk_to_draw(win);
         
         // maybe will cause lag spike
@@ -157,82 +177,88 @@ void World_draw(Window *win)
         
         Chunk_push_gpu(win, 0, win->wrd_render.vertices.size);
     }
-    else 
+    else
     {
         int save_index = win->wrd_render.chunk_texture.size;
         assert(win->wrd_render.chunk_texture.size == win->wrd_render.vertices.size);
 
         for (int i = save_index; i < win->wrd_render.chunks.size; i++)
             Chunk_push(win, win->wrd_render.chunks.arr[i]);
-
-        Chunk_push_gpu(win, save_index, win->wrd_render.chunks.size - save_index);
-    }
-    printf("chunk to draw: %d\n", win->wrd_render.chunks.size);
-}
-
-void Window_draw(Window *win)
-{
-    if (1)
-    {
-        if (win->wrd_render.vertices.size != 1 || win->wrd_render.chunk_texture.size != 1)
-        {
-            win->wrd_render.vertices.size = 0;
-            win->wrd_render.chunk_texture.size = 0;
-            da_push_zero(&win->wrd_render.vertices);
-            // da_push(&win->wrd_render.vertices, ((Vec2){ 1, 0 }));
-            da_push_zero(&win->wrd_render.chunk_texture);
-            // da_push_zero(&win->wrd_render.chunk_texture);
-        }
-        
-        const int offset = 0;
-        const int size = 1;
-        glBindBuffer(GL_ARRAY_BUFFER, win->wrd_render.VBO);
-        glBufferSubData(
-            GL_ARRAY_BUFFER,
-            offset * sizeof(win->wrd_render.vertices.arr[0]),
-            size   * sizeof(win->wrd_render.vertices.arr[0]),
-            &win->wrd_render.vertices.arr[offset]
-        );
-        glBindBuffer(GL_TEXTURE_BUFFER, win->wrd_render.TBO);
-        glBufferSubData(
-            GL_TEXTURE_BUFFER,
-            offset * sizeof(win->wrd_render.chunk_texture.arr[0]),
-            size   * sizeof(win->wrd_render.chunk_texture.arr[0]),
-            &win->wrd_render.chunk_texture.arr[offset]
-        );
-    }
-    else
-    {
-        reset_chunk_to_draw(win);
-
-        for_set (Item_chunks, item, &win->wrd.chunks)
-        {
-            if (item && item->data)
-                Chunk_push(win, item->data);
-            else printf("set NULL\n");
-        }
-        Chunk_push_gpu(win, 0, win->wrd_render.vertices.size);
-
-        assert(win->wrd_render.vertices.size == win->wrd_render.chunk_texture.size);
-        assert(win->wrd_render.vertices.size <= 3);
+        if (save_index < win->wrd_render.chunks.size)
+            Chunk_push_gpu(win, save_index, win->wrd_render.chunks.size - save_index);
     }
 
-    // World_draw(win);
-    // Ui_draw(win);
+    if (0) printf("chunk to draw: %d\n", win->wrd_render.chunks.size);
 
     {
         glUseProgram(win->wrd_render.shader.program);
         glBindVertexArray(win->wrd_render.VAO);
         glBindBuffer(GL_ARRAY_BUFFER, win->wrd_render.VBO);
-        glDrawArrays(GL_POINTS, 0, win->wrd_render.vertices.size);
-        {
-            // da_print(&win->wrd_render.vertices, v2_print);
-            // printf("cam: %s zoom %f\n", v2_sprint(win->wrd_render.cam.target), win->wrd_render.cam.zoom);
-            // print_buffer_size = 0;
-            assert(win->wrd_render.vertices.size == 1);
-        }
-        // assert(glGetError() == GL_NO_ERROR);
-        // printf("draw %d points\n", win->wrd_render.vertices.size);
+        glBindTexture(GL_TEXTURE_BUFFER, win->wrd_render.TEX);
+        glDrawArrays(GL_POINTS, 0, 4 * win->wrd_render.vertices.size);
     }
+}
+
+void Window_draw(Window *win)
+{
+    glDepthMask(GL_FALSE);
+
+    if (1) World_draw(win);
+    else if (1)
+    {
+        Chunk_raw_2D chunk_raw = {0};
+        //     { 16, 16, 16, 16 },
+        //     { 16, 16, 16, 16 }
+        // };
+        // memset(chunk_raw, 17, sizeof(Chunk_raw_2D));
+        for (int x = 0; x < 16; x++)
+            for (int y = 0; y < 16; y++)
+                if (x == y)
+                    chunk_raw[y][x] = 16;
+        for (int x = 0; x < 16; x++)
+            chunk_raw[0][x] = 18;
+        
+        
+        glBindBuffer(GL_ARRAY_BUFFER, win->wrd_render.VBO);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(Vec24), &(Vec24){0}, GL_DYNAMIC_DRAW);
+        
+
+        glActiveTexture(GL_TEXTURE0 + win->wrd_render.TBO_texture_unit);
+        glBindBuffer(GL_TEXTURE_BUFFER, win->wrd_render.TBO);
+        glBufferData(GL_TEXTURE_BUFFER, sizeof(Chunk_raw_2D), chunk_raw, GL_DYNAMIC_DRAW);
+        
+        
+        glUseProgram(win->wrd_render.shader.program);
+        glBindVertexArray(win->wrd_render.VAO);
+        glBindBuffer(GL_ARRAY_BUFFER, win->wrd_render.VBO);
+        glBindTexture(GL_TEXTURE_BUFFER, win->wrd_render.TEX);
+        glDrawArrays(GL_POINTS, 0, 4);
+    }
+    else
+    {
+        reset_chunk_to_draw(win);
+
+        // printf("size wrd.chs.size %d\n", win->wrd.chunks.item_count);
+        for_set (Item_chunks, item, &win->wrd.chunks)
+        {
+            assert(item && item->data);
+            Chunk_push(win, item->data);
+        }
+        Chunk_push_gpu(win, 0, win->wrd_render.vertices.size);
+
+        assert(win->wrd_render.vertices.size == win->wrd_render.chunk_texture.size);
+        // assert(win->wrd_render.vertices.size == 2);
+        
+
+        glUseProgram(win->wrd_render.shader.program);
+        glBindVertexArray(win->wrd_render.VAO);
+        glBindBuffer(GL_ARRAY_BUFFER, win->wrd_render.VBO);
+        glBindTexture(GL_TEXTURE_BUFFER, win->wrd_render.TEX);
+        glDrawArrays(GL_POINTS, 0, 4 * win->wrd_render.vertices.size);
+    }
+
+
+    // World_draw(win);
+    // Ui_draw(win);
 }
 

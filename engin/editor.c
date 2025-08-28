@@ -394,6 +394,7 @@ char *save_World(const World *wrd, const char *file_name)
                              * (chunk_data->size + chunk_data->size % 2);
         assert(to_write.size + (ssize_t)size_to_write < to_write.capacity);
         to_write.size += size_to_write;
+        assert(to_write.size % 4 == 0); // int align
     }
 
     
@@ -408,11 +409,13 @@ char *save_World(const World *wrd, const char *file_name)
 
 char *read_Header(Strv *raw_bytes, Header *res)
 {
-    if (raw_bytes->size < (ssize_t)sizeof(*res))
+    if (!Strv_consume(raw_bytes, *res))
         return "[ERROR] file shorter than the header";
-    
-    *res = *(Header*)raw_bytes->arr;
-    *raw_bytes = Strv_stride(*raw_bytes, sizeof(*res));
+        
+    // if (raw_bytes->size < (ssize_t)sizeof(*res))
+        // return "[ERROR] file shorter than the header";
+    // *res = *(Header*)raw_bytes->arr;
+    // *raw_bytes = Strv_stride(*raw_bytes, sizeof(*res));
 
     if (res->packted_magic != FILE_MAGIC_PACKED)
         return "[ERROR] wrong magic";
@@ -422,16 +425,20 @@ char *read_Header(Strv *raw_bytes, Header *res)
         return "[ERROR] corrupt file \"negative chunk count\"";
     if (res->chunk_width != W || res->chunk_height != H)
         return "[ERROR] corrupt file \"unvalid width or/and height\"";
+    if (res->chunk_count * (sizeof(int) + sizeof(Pos)) > raw_bytes->size)
+        return "[WARNING] corrupt file \"too many chunks for the file size\"";
 
     return NULL;
 }
 
+
+
 char *load_World(const char *file, World *res)
 {
-    Strb data_raw_bytes = err_attrib(Strb_read_all(file), 
+    Strb data_raw_bytes = err_attrib(Strb_read_all_bytes(file),
         err, return "[ERROR] can't read file";
-    );
-
+    ); 
+    
     Strv raw_bytes = data_raw_bytes.self;
     
     Header head = {0};
@@ -445,27 +452,33 @@ char *load_World(const char *file, World *res)
     *res = World_make(file);
     for (int i = 0; i < head.chunk_count; i++)
     {
-        if (raw_bytes.size < (ssize_t)(sizeof(Pos) + sizeof(int)))
+        Pos tmp_pos = {0};
+        if (!Strv_consume(&raw_bytes, tmp_pos))
         {
             Strb_free(data_raw_bytes);
-            return "[WARNING] corrupt file \"can't read a chunk (blocked at .pos .cell_count)\"";
+            return "[WARNING] corrupt file \"can't read a chunk (blocked at .pos)\"";
         }
-        Pos tmp_pos = {0};
-        tmp_pos.x = *(int*)raw_bytes.arr;
-        raw_bytes = Strv_stride(raw_bytes, sizeof(tmp_pos.x));
-        tmp_pos.y = *(int*)raw_bytes.arr;
-        raw_bytes = Strv_stride(raw_bytes, sizeof(tmp_pos.y));
         
-        int cell_count = *(int*)raw_bytes.arr;
-        raw_bytes = Strv_stride(raw_bytes, sizeof(int));
-
+        int cell_count = 0;
+        if (!Strv_consume(&raw_bytes, cell_count))
+        {
+            Strb_free(data_raw_bytes);
+            return "[WARNING] corrupt file \"can't read a chunk (blocked at .cell_count)\"";
+        }
+        if (cell_count * sizeof(Cell_data) > raw_bytes.size)
+        {
+            Strb_free(data_raw_bytes);
+            return "[WARNING] corrupt file \"too many declared cells in a chunk for file size\"";
+        }
+        
         if (cell_count > 0)
         {
             Chunk *chunk = add_Chunk(res, tmp_pos);
             
             for (int i = 0; i < cell_count; i++)
             {
-                if (raw_bytes.size < (ssize_t)sizeof(Cell_data))
+                Cell_data cell_data = {0};
+                if (!Strv_consume(&raw_bytes, cell_data))
                 {
                     Strb_free(data_raw_bytes);
                     if (!erase_Chunk(chunk))
@@ -475,8 +488,6 @@ char *load_World(const char *file, World *res)
                     }
                     return "[WARNING] corrupt file \"can't read a chunk (blocked at ?/? cell)\"";
                 }
-                Cell_data cell_data = *(Cell_data*)raw_bytes.arr;
-                raw_bytes = Strv_stride(raw_bytes, sizeof(Cell_data));
                 
                 Chunk_set_cell(chunk, cell_data.pos, cell_data.value);
             }

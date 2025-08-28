@@ -23,27 +23,29 @@ void resize_callback(Render *render, int width, int height)
 
 bool set_uniform(Shader_programme_id shader_program, void *arg_void)
 {
-    Texs *texs = (Texs*)arg_void;
+    Window *win = (Window*)arg_void;
 
     // lazly get locs
-    if (texs->atlas.loc != -1)
-        texs->atlas.loc = glGetUniformLocation(shader_program, "atlas");
-    if (texs->paste_mouver.loc != -1)
-        texs->paste_mouver.loc = glGetUniformLocation(shader_program, "ui_texture1");
+    if (win->texs.atlas.loc != -1)
+        win->texs.atlas.loc = glGetUniformLocation(shader_program, "atlas");
+    if (win->texs.paste_mouver.loc != -1)
+        win->texs.paste_mouver.loc = glGetUniformLocation(shader_program, "ui_texture1");
+    if (win->wrd_render.uniform_chunks_loc != -1)
+        win->wrd_render.uniform_chunks_loc = glGetUniformLocation(shader_program, "chunks");
     
 
     glUseProgram(shader_program);
 
-    foreach_static (size_t, i, texs->tex_array)
-        glUniform1i(texs->tex_array[i].loc, texs->tex_array[i].texture_unit);
+    foreach_static (size_t, i, win->texs.tex_array)
+        glUniform1i(win->texs.tex_array[i].loc, win->texs.tex_array[i].texture_unit);
+        
+    glUniform1i(win->wrd_render.uniform_chunks_loc, win->wrd_render.TBO_texture_unit);
     
-    // glUniform2f(loc_campos, 0.0, 0.0);
-    // glUniform1i(loc_atlas, atlas_texture_unit_index); // set it manually
-
     return true;
 }
 
-void set_rd_opengl_objects(struct Render_world *rw)
+int texture_unit_count = 0;
+void set_rd_opengl_objects(Render_world *rw, Shader *shader)
 {
     rw->vertices_to_update = true;
     rw->max_visible_chunk = 64*64;
@@ -76,17 +78,18 @@ void set_rd_opengl_objects(struct Render_world *rw)
 
     // glDrawElements ?? to render subset
     // keep how many are inactive and use glBufferData when too much
-    
+
+    rw->TBO_texture_unit = texture_unit_count++;
     glBindBuffer(GL_TEXTURE_BUFFER, rw->TBO);
-    glBufferData(GL_TEXTURE_BUFFER, 
+    glBufferData(GL_TEXTURE_BUFFER,
         rw->chunk_texture.capacity * sizeof(rw->chunk_texture.arr[0]),
-        rw->chunk_texture.arr, 
+        rw->chunk_texture.arr,
         GL_DYNAMIC_DRAW
     );
     glBindTexture(GL_TEXTURE_BUFFER, rw->TEX);
-    glTexBuffer(GL_TEXTURE_BUFFER, GL_R32UI, rw->TBO);
+    glTexBuffer(GL_TEXTURE_BUFFER, GL_R8UI, rw->TBO);
+    // glTexBuffer(GL_TEXTURE_BUFFER, GL_R32UI, rw->TBO);
 }
-
 
 
 
@@ -108,17 +111,27 @@ Window Window_make(const char *name)
         .uniform_camzoom_loc = -1,
         .uniform_width_loc = -1,
         .uniform_height_loc = -1,
-        .uniform_ratio_loc = -1
+        .uniform_ratio_loc = -1,
+        .uniform_chunks_loc = -1
     };
     if (!rd_load_shader(&res.wrd_render.shader,
-        set_uniform, &res.texs, 
+        set_uniform, &res, 
         "shaders/texture.vs", GL_VERTEX_SHADER,
         "shaders/texture.gs", GL_GEOMETRY_SHADER,
         "shaders/texture.fs", GL_FRAGMENT_SHADER
-    )) (void)0; //UNREACHABLE("shader compile");
+    )) assert("shader compile"[0] != 's');
 
 
-    set_rd_opengl_objects(&res.wrd_render);
+    
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+    // glBlendFunc(GL_ONE, GL_SRC_ALPHA);
+    
+    glDepthMask(GL_FALSE);
+
+
+
+    set_rd_opengl_objects(&res.wrd_render, &res.wrd_render.shader);
 
     rd_set_clear_color(DARKGRAY);
 
@@ -159,6 +172,7 @@ void send_dynamic_uniform_to_gpu(Window *win)
         rd->uniform_width_loc = glGetUniformLocation(rd->shader.program, "width");
         rd->uniform_height_loc = glGetUniformLocation(rd->shader.program, "height");
         rd->uniform_ratio_loc = glGetUniformLocation(rd->shader.program, "ratio");
+        rd->uniform_chunks_loc = glGetUniformLocation(rd->shader.program, "chunks");
     }
     
     glUseProgram(rd->shader.program);
@@ -167,6 +181,9 @@ void send_dynamic_uniform_to_gpu(Window *win)
     glUniform1f(rd->uniform_width_loc, rd_get_screen_width());
     glUniform1f(rd->uniform_height_loc, rd_get_screen_height());
     glUniform1f(rd->uniform_ratio_loc, rd_get_screen_ratio());
+    
+    glActiveTexture(GL_TEXTURE0 + rd->TBO_texture_unit);
+    glUniform1i(rd->uniform_chunks_loc, rd->TBO_texture_unit);
 }
 
 
@@ -188,92 +205,39 @@ int main(void)
     Window win = Window_make("main");
     
 
-    /* if (1) 
-    { // load world
+    if (1) // load world
+    { 
         char *err_world = load_World("./save/world1.wrd", &win.wrd);
         if (err_world) {
             perror("open");
             printf("%s\n", err_world);
             win.wrd = World_make("main");
         }
-    } */
+    }
 
-    // Render *render = rd_init("name", 500, 500, NULL); UNUSED(render);
-    // rd_set_clear_color(DARKGRAY);
-
-
-    float vvv[][2] = {
-        /* {0, 0},
-        {0.5, 0},
-            */{0, -0.5}
-    };
-    // Shader debug_shader = {0};
-    // if (!rd_load_shader(&debug_shader, set_uniform, &win.texs,
-    //     "shaders/texture.vs", GL_VERTEX_SHADER,
-    //     "shaders/texture.gs", GL_GEOMETRY_SHADER,
-    //     "shaders/texture.fs", GL_FRAGMENT_SHADER
-    // )) assert(0);
-    // GLuint VAO = 0;
-    // GLuint VBO = 0;
-    // {
-    //     glGenVertexArrays(1, &VAO);
-    //     glGenBuffers(1, &VBO);
-    //     glBindVertexArray(VAO);
-    //     glBindBuffer(GL_ARRAY_BUFFER, VBO);
-    //     glBufferData(GL_ARRAY_BUFFER, sizeof(vvv), vvv, GL_STATIC_DRAW);
-    //     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(float) * 2, (void*)0);
-    //     glEnableVertexAttribArray(0);
-    // }
- 
-    {
+    /* {
         win.wrd_render.vertices.size = 0;
         win.wrd_render.chunk_texture.size = 0;
-        da_push(&win.wrd_render.vertices, ((Vec2){ 0, 0 }));
-        da_push(&win.wrd_render.vertices, ((Vec2){ 0, 0 }));
-        da_push(&win.wrd_render.vertices, ((Vec2){ 0, 0 }));
-        da_push(&win.wrd_render.vertices, ((Vec2){ 0, 0 }));
+        da_push_zero(&win.wrd_render.vertices);
         
-        da_push(&win.wrd_render.vertices, ((Vec2){ 1, 0 }));
-        da_push(&win.wrd_render.vertices, ((Vec2){ 1, 0 }));
-        da_push(&win.wrd_render.vertices, ((Vec2){ 1, 0 }));
-        da_push(&win.wrd_render.vertices, ((Vec2){ 1, 0 }));
+        // da_push(&win.wrd_render.vertices, ((Vec2){ 1, 0 }));
+        // da_push(&win.wrd_render.vertices, ((Vec2){ 1, 0 }));
+        // da_push(&win.wrd_render.vertices, ((Vec2){ 1, 0 }));
+        // da_push(&win.wrd_render.vertices, ((Vec2){ 1, 0 }));
         
         
-        da_push_zero(&win.wrd_render.chunk_texture);
-        da_push_zero(&win.wrd_render.chunk_texture);
-        da_push_zero(&win.wrd_render.chunk_texture);
-        da_push_zero(&win.wrd_render.chunk_texture);
-        
-        da_push_zero(&win.wrd_render.chunk_texture);
-        da_push_zero(&win.wrd_render.chunk_texture);
-        da_push_zero(&win.wrd_render.chunk_texture);
         da_push_zero(&win.wrd_render.chunk_texture);
         // da_push_zero(&win.wrd_render.chunk_texture);
-    }
+    } */
     
     while (!rd_should_close())
     {
-        // glfwSwapInterval(1);
-        if (rd_is_key_down(GLFW_KEY_ESCAPE)) rd_set_to_close();
-        if (rd_is_key_pressed(GLFW_KEY_SPACE)) 
-            rd_reload_shader(&win.wrd_render.shader, &win.texs);
-        // if (rd_is_key_pressed(GLFW_KEY_SPACE)) 
-        //     rd_reload_shader(&debug_shader, &win.texs);
         
 
         inputs(&win);
         send_dynamic_uniform_to_gpu(&win);
-        if (0) Window_draw(&win);
-        else
-        {
-            glBindBuffer(GL_ARRAY_BUFFER, win.wrd_render.VBO);
-            glBufferData(GL_ARRAY_BUFFER, sizeof(float)*2 * win.wrd_render.vertices.size, win.wrd_render.vertices.arr, GL_DYNAMIC_DRAW);
-            glUseProgram(win.wrd_render.shader.program);
-            glBindVertexArray(win.wrd_render.VBO);
-
-            printf("size %d\n", win.wrd_render.vertices.size);
-            glDrawArrays(GL_POINTS, 0, win.wrd_render.vertices.size);
-        }
+        Window_draw(&win);
+        
 
 
         /* if (0)
@@ -302,6 +266,12 @@ int main(void)
         } */
         
         rd_end_frame();
+
+#ifndef __linux__
+        glfwSetWindowTitle(win.render->glfw, Sprintf("fps %d", rd_get_fps()));
+        printf(print_buffer);
+        print_buffer_size = 0;
+#endif /* not __linux__ */
 
         // printf("fps %d\n", rd_get_fps());
         // UPDATE_LINE;
