@@ -6,6 +6,9 @@
 
 
 #define Null_Struct(T, value) (0 == memcmp(&value, &(T){0}, sizeof(value)))
+#define STRUCT_OFFSET(struct_T, component_name) ((void*)&(((struct_T*)NULL)->component_name))
+
+
 #define SWAP(a, b) do { __auto_type SWAP_tmp = a; a = b; b = SWAP_tmp; } while (0)
 #define MIN(a, b) ((a) < (b) ? (a) : (b))
 #define ABS(a) ((a) < 0 ? -(a) : (a))

@@ -9,12 +9,12 @@
 #include <assert.h>
 #include "stb_image.h"
 #include "da.h"
-#include "../utils.h"
+#include "utils.h"
 #include "print.h"
 #define STRING_FILEIO
 #include "Str.h"
 
-
+#include "utils.h"
 #include "geometry.h"
 
 
@@ -80,6 +80,7 @@ typedef struct Button
     } state;
 
     const char *text;
+    uint32_t texture_index; // 
     // bool is_in_world_space;
 } Button;
 
@@ -143,6 +144,7 @@ typedef struct Shader_metadata
 } Shader_metadata;
 DA_TYPEDEF_ARRAY(Shader_metadata);
 typedef bool (*Uniform_setter_fun_t)(Shader_programme_id, void*);
+
 typedef struct Shader
 {
     Shader_programme_id program;
@@ -153,6 +155,47 @@ typedef struct Shader
     int tiu_geometry_dispatcher;
     int tiu_fragment_dispatcher;
 } Shader;
+
+
+// 256 * 56 = 14.336Kb
+#define BASE_MAX_UI_ELEMENT_COUNT 256 // maybe not enough for option menu ?
+
+typedef struct rd_ui_Omni_rect_vertex
+{
+    Rect  box;
+    Color fill_color;
+    Color border_color;
+    float border_thickness;
+    uint32_t texture_index; // 0 for none start at 1 
+} rd_ui_Omni_rect_vertex;
+// 4 = 56 bytes
+DA_TYPEDEF_ARRAY(rd_ui_Omni_rect_vertex);
+
+
+typedef struct rd_ui_Handel
+{
+    da_rd_ui_Omni_rect_vertex vertices;
+    Camera cam;
+
+
+    VAO_id VAO;
+    VBO_id VBO;
+    int VBO_capacity; // in number of vertex
+
+    Shader shader;
+    struct rd_ui_Shaders_locs
+    {
+        GLint campos;
+        GLint camzoom;
+        GLint ratio;
+        // GLint window_width;
+        // GLint window_height;
+    } loc;
+    
+} rd_ui_Handel;
+
+
+
 
 typedef enum Rd_log_level
 {
@@ -222,5 +265,12 @@ Vec2 rd_get_screen_to_world(Camera cam, Vec2 pos);
 
 Rect Rect_transform_by_Camera(Camera cam, Rect rec);
 bool rd_collision_Vec2_Rect(Vec2 vec, Rect rec);
+
+//ui
+rd_ui_Handel rd_ui_make_Handel(Camera cam);
+void rd_ui_free_Handel(rd_ui_Handel *handel);
+bool rd_ui_set_uniforms(Shader_programme_id program, rd_ui_Handel *rd_ui_handel);
+void rd_ui_draw(rd_ui_Handel *handel);
+
 
 #endif /* RENDER_H */

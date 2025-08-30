@@ -22,7 +22,7 @@
 #include "Str.h"
 #include "err.h"
 
-#include "../utils.h"
+#include "utils.h"
 
 #define W 16
 #define H 16

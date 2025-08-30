@@ -631,8 +631,10 @@ void inputs(Window *win)
 {
     if (rd_is_key_down(GLFW_KEY_ESCAPE)) rd_set_to_close();
     if (rd_is_key_pressed(GLFW_KEY_SPACE)) 
-        rd_reload_shader(&win->wrd_render.shader, &win->texs);
+        rd_reload_shader(&win->wrd_render.shader, win);
+    
         
+    
 
     win->ui.old_mouse_pos = win->ui.mouse_pos;
     win->ui.mouse_pos = /* rdTODO screen_to_Pos */  VEC2_TO_POS(rd_get_cursor_pos());
@@ -697,54 +699,17 @@ void inputs(Window *win)
     }
 }
 
+
+
+
 Ui Ui_make(Render *render)
 {
     glfwSetScrollCallback(render->glfw, zoom_scroll_callback);
 
     const char *file_save_path = "./save/world1.wrd";
-    Ui_draw_data draw = {0};
 
-    {
-        glGenVertexArrays(1, &draw.VAO);
-        glGenBuffers(1, &draw.VBO);
-        
-        glBindVertexArray(draw.VAO);
-
-        glBindBuffer(GL_ARRAY_BUFFER, draw.VBO);
-        glBufferData(GL_ARRAY_BUFFER, 
-            draw.vertices.capacity * sizeof(draw.vertices.arr[0]),
-            draw.vertices.arr, 
-            GL_STREAM_DRAW
-        );
-
-        glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, sizeof(Ui_vertex_data), 
-            (void*)0
-        );
-        glEnableVertexAttribArray(0);
-        
-        glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(Ui_vertex_data), 
-            (void*)sizeof((Ui_vertex_data){0}.box)
-        );
-        glEnableVertexAttribArray(1);
-
-        glVertexAttribPointer(2, 1, GL_UNSIGNED_INT, GL_FALSE, sizeof(Ui_vertex_data), 
-            (void*)(sizeof((Ui_vertex_data){0}.box) 
-                  + sizeof((Ui_vertex_data){0}.color))
-        );
-        glEnableVertexAttribArray(2);
-
-        glVertexAttribPointer(3, 1, GL_UNSIGNED_INT, GL_FALSE, sizeof(Ui_vertex_data), 
-            (void*)(sizeof((Ui_vertex_data){0}.box)
-                  + sizeof((Ui_vertex_data){0}.color)
-                  + sizeof((Ui_vertex_data){0}.type))
-        );
-        glEnableVertexAttribArray(3);
-
-        
-    }
-
+    
     return (Ui){
-        .draw = draw,
         .mode = mode_idle,
         .mouse_pos = {0},
         .edit = {

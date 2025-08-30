@@ -173,6 +173,7 @@ Arg_Shell_List arg_parse(const sa_Strv *args)
         
         da_push_many(&res.comp_flags,
             Strv_cstr("-I./includes"),
+            Strv_cstr("-I."),
             build_path.self,
             Strv_cstr("-Wall"),
             Strv_cstr("-Wextra"),
@@ -259,7 +260,8 @@ Arg_Shell_List arg_parse(const sa_Strv *args)
                 Strv_cstr(SRC_DIR"draw.c"),
                 Strv_cstr(SRC_DIR"ui_input.c"),
                 Strv_cstr(SRC_DIR"render.c"),
-                Strv_cstr(SRC_DIR"shader.c")
+                Strv_cstr(SRC_DIR"shader.c"),
+                Strv_cstr(SRC_DIR"rd_ui.c")
             );
         }
         else if (res.scoop == engin) 
@@ -306,7 +308,7 @@ Proc compile_file(Strv file, const Arg_Shell_List *args)
 
     Strb_cat(&builder, DOT_O_DIR);
     Strb_cat_Str(&builder, strip_extention(strip_file_path(file)));
-    Strb_cat(&builder, ".o");
+    Strb_cat(&builder, args->platform == platform_linux ? ".o" : ".obj");
     da_push_many(&cmd,
         file,
         Strv_cstr("-o"),
@@ -395,13 +397,13 @@ int main(int argc, char **argv)
             Strb builder = {0};
             Strb_cat(&builder, DOT_O_DIR);
             Strb_cat_Str(&builder, strip_extention(strip_file_path(*src_files)));
-            Strb_cat(&builder, ".o");
+            Strb_cat(&builder, parameters.platform == platform_linux ? ".o" : ".obj");
             Strb_cat_null(&builder);
             
             da_push(&cmd, builder.self);
         }
         da_push_da(&cmd, &parameters.link_flags);
-
+        
         if (!Cmd_run_wait_reset(&cmd)) return 1;
         da_free(&cmd);
     }

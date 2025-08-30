@@ -425,7 +425,7 @@ char *read_Header(Strv *raw_bytes, Header *res)
         return "[ERROR] corrupt file \"negative chunk count\"";
     if (res->chunk_width != W || res->chunk_height != H)
         return "[ERROR] corrupt file \"unvalid width or/and height\"";
-    if (res->chunk_count * (sizeof(int) + sizeof(Pos)) > raw_bytes->size)
+    if (res->chunk_count * (int)(sizeof(int) + sizeof(Pos)) > raw_bytes->size)
         return "[WARNING] corrupt file \"too many chunks for the file size\"";
 
     return NULL;
@@ -465,7 +465,7 @@ char *load_World(const char *file, World *res)
             Strb_free(data_raw_bytes);
             return "[WARNING] corrupt file \"can't read a chunk (blocked at .cell_count)\"";
         }
-        if (cell_count * sizeof(Cell_data) > raw_bytes.size)
+        if (cell_count * (int)sizeof(Cell_data) > raw_bytes.size)
         {
             Strb_free(data_raw_bytes);
             return "[WARNING] corrupt file \"too many declared cells in a chunk for file size\"";

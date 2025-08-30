@@ -24,8 +24,10 @@ static void debugMessage(GLenum source, GLenum type, GLuint id, GLenum severity,
 {
     UNUSED(userParam);
     // Some debug messages are just annoying informational messages
-    if (id == 131185) // glBufferData success weird NVIDIA shit aparenly 
+    if (id == 131185) // glBufferData success weird NVIDIA shit apparently
         return ;
+    if (source == GL_DEBUG_SOURCE_SHADER_COMPILER_ARB)
+        return ; // handeled otherwise better
     
     printf("[");
     switch (severity)
@@ -419,7 +421,7 @@ bool rd_Button(Button *button)
 void draw_Button(Button button)
 {
     // TODO
-    UNUSED(button); 
+    TODO("draw button"); 
     // GuiDrawButton(button.bounds, button.text, button.state);
 }
 
@@ -453,6 +455,7 @@ float rd_get_screen_height(void)
 }
 float rd_get_screen_ratio(void)
 {
+    assert(current_render->screen_ratio);
     return current_render->screen_ratio;
 }
 Vec2 rd_get_screen_to_world(Camera cam, Vec2 pos)
@@ -502,7 +505,8 @@ Render *rd_init(const char *title, int width, int height, rd_resize_callback_t c
     
     res->screen_width = width;
     res->screen_height = height;
-
+    res->screen_ratio = (float)width/(float)height;
+    
     res->frame_time.target_fps = 60;
     res->frame_time.start_frame_time = glfwGetTime();
     rd_calculate_frame_time();
@@ -709,7 +713,7 @@ bool _rd_load_shader(Shader *res, Uniform_setter_fun_t uniform_setter, void *uni
     va_end(args);
     bool no_err = rd_dummy_reload_shader(res, uniform_setter_arg);
     if (no_err) rd_successful_shader_load(res, false);
-
+    
     return no_err;
 }
 

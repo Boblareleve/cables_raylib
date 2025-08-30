@@ -260,7 +260,8 @@ typedef struct Menu_ui
 
 
 
-typedef struct Ui_vertex_data
+
+/* typedef struct Ui_vertex_data
 {
     Rect box;
     Color color;
@@ -275,16 +276,9 @@ typedef struct Ui_vertex_data
     uint32_t sampler_index;
 } Ui_vertex_data;
 static_assert(sizeof(enum Ui_element_type) == 4);
-DA_TYPEDEF_ARRAY(Ui_vertex_data);
+DA_TYPEDEF_ARRAY(Ui_vertex_data); */
 
 
-
-typedef struct Ui_draw_data
-{
-    da_Ui_vertex_data vertices;
-    VAO_id VAO;
-    VBO_id VBO;
-} Ui_draw_data;
 
 typedef struct Ui
 {
@@ -338,7 +332,6 @@ typedef struct Ui
     */
     
 
-    Ui_draw_data draw;
 } Ui;
 
 
@@ -350,17 +343,17 @@ DA_TYPEDEF_ARRAY(Chunk_raw);
 typedef struct Render_world
 {
     Shader shader;
-    union {
+    union Render_world_Shaders_locs {
         struct {
-            GLint uniform_campos_loc;
-            GLint uniform_camzoom_loc;
-            GLint uniform_width_loc;
-            GLint uniform_height_loc;
-            GLint uniform_ratio_loc;
-            GLint uniform_chunks_loc;
+            GLint campos;
+            GLint camzoom;
+            GLint width;
+            GLint height;
+            GLint ratio;
+            GLint chunks;
         };
-        GLint uniform_locs[6];
-    };
+        GLint array[6];
+    } loc;
 
 
     uint32_t max_visible_chunk;

@@ -142,8 +142,6 @@ void Ui_draw(const Window *win)
     // snprintf(std_fps, sizeof(std_fps), "[FPS %d]", GetFPS());
     // DrawText(std_fps, GetScreenWidth() - MeasureText(std_fps, 24) - 10, 10, 24, WHITE);
 
-    
-
     // Ui_cam_draw(ui, texs, cam);
     
     // const int padding = 4;

@@ -123,7 +123,7 @@ void reset_chunk_to_draw(Window *win)
 void World_draw(Window *win)
 {
     // Camera_print(win->wrd_render.cam);
-    const Pos tmp = screen_to_Pos(win->wrd_render.cam, (Vec2){0, 0});
+    // const Pos tmp = screen_to_Pos(win->wrd_render.cam, (Vec2){0, 0});
     
     // Vec2 world_vec = rd_get_screen_to_world(win->wrd_render.cam, (Vec2){0});
     // printf(" -> ");
@@ -203,8 +203,8 @@ void Window_draw(Window *win)
 {
     glDepthMask(GL_FALSE);
 
-    if (1) World_draw(win);
-    else if (1)
+    World_draw(win);
+    /* else if (0)
     {
         Chunk_raw_2D chunk_raw = {0};
         //     { 16, 16, 16, 16 },
@@ -256,9 +256,8 @@ void Window_draw(Window *win)
         glBindTexture(GL_TEXTURE_BUFFER, win->wrd_render.TEX);
         glDrawArrays(GL_POINTS, 0, 4 * win->wrd_render.vertices.size);
     }
+ */
 
-
-    // World_draw(win);
     // Ui_draw(win);
 }
 

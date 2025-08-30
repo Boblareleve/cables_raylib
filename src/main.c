@@ -21,26 +21,27 @@ void resize_callback(Render *render, int width, int height)
 // char const* paste_mouver_name;
 // int paste_mouver_texture_unit_index;
 
-bool set_uniform(Shader_programme_id shader_program, void *arg_void)
+bool set_world_static_uniform(Shader_programme_id shader_program, void *arg_void)
 {
     Window *win = (Window*)arg_void;
 
-    // lazly get locs
-    if (win->texs.atlas.loc != -1)
-        win->texs.atlas.loc = glGetUniformLocation(shader_program, "atlas");
-    if (win->texs.paste_mouver.loc != -1)
-        win->texs.paste_mouver.loc = glGetUniformLocation(shader_program, "ui_texture1");
-    if (win->wrd_render.uniform_chunks_loc != -1)
-        win->wrd_render.uniform_chunks_loc = glGetUniformLocation(shader_program, "chunks");
-    
-
     glUseProgram(shader_program);
 
+    // lazly get locs
+    /* if (win->texs.atlas.loc        == -1
+     || win->texs.paste_mouver.loc == -1
+     || win->wrd_render.loc.chunks == -1
+    ) */ 
+    {
+        win->texs.atlas.loc        = glGetUniformLocation(shader_program, "atlas");
+        win->texs.paste_mouver.loc = glGetUniformLocation(shader_program, "ui_texture1");
+        win->wrd_render.loc.chunks = glGetUniformLocation(shader_program, "chunks");
+    }
+    
     foreach_static (size_t, i, win->texs.tex_array)
         glUniform1i(win->texs.tex_array[i].loc, win->texs.tex_array[i].texture_unit);
-        
-    glUniform1i(win->wrd_render.uniform_chunks_loc, win->wrd_render.TBO_texture_unit);
-    
+    glUniform1i(win->wrd_render.loc.chunks, win->wrd_render.TBO_texture_unit);
+   
     return true;
 }
 
@@ -107,21 +108,23 @@ Window Window_make(const char *name)
     res.ui = Ui_make(res.render);
     res.wrd_render = (Render_world){ 
         .cam = { .target = 0, .zoom = 1 },
-        .uniform_campos_loc = -1,
-        .uniform_camzoom_loc = -1,
-        .uniform_width_loc = -1,
-        .uniform_height_loc = -1,
-        .uniform_ratio_loc = -1,
-        .uniform_chunks_loc = -1
+        .loc = {
+            .campos = -1,
+            .camzoom = -1,
+            .width = -1,
+            .height = -1,
+            .ratio = -1,
+            .chunks = -1
+        }
     };
     if (!rd_load_shader(&res.wrd_render.shader,
-        set_uniform, &res, 
-        "shaders/texture.vs", GL_VERTEX_SHADER,
-        "shaders/texture.gs", GL_GEOMETRY_SHADER,
-        "shaders/texture.fs", GL_FRAGMENT_SHADER
+        set_world_static_uniform, &res, 
+        "shaders/world/chunk.vs", GL_VERTEX_SHADER,
+        "shaders/world/chunk.gs", GL_GEOMETRY_SHADER,
+        "shaders/world/chunk.fs", GL_FRAGMENT_SHADER
     )) assert("shader compile"[0] != 's');
 
-
+    
     
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -150,8 +153,8 @@ void Window_free(Window *win)
 
 static inline bool should_update_uniforms_locs(const Render_world *rd)
 {
-    foreach_static (size_t, i, rd->uniform_locs)
-        if (rd->uniform_locs[i] == -1)
+    foreach_static (size_t, i, rd->loc.array)
+        if (rd->loc.array[i] == -1)
             return true;
     return false;
 }
@@ -167,23 +170,23 @@ void send_dynamic_uniform_to_gpu(Window *win)
         //     (char*[]){ "campos", "camzoom", "width", "height", "ratio" },
         //     rd->uniform_locs
         // );
-        rd->uniform_campos_loc  = glGetUniformLocation(rd->shader.program, "campos");
-        rd->uniform_camzoom_loc = glGetUniformLocation(rd->shader.program, "camzoom");
-        rd->uniform_width_loc = glGetUniformLocation(rd->shader.program, "width");
-        rd->uniform_height_loc = glGetUniformLocation(rd->shader.program, "height");
-        rd->uniform_ratio_loc = glGetUniformLocation(rd->shader.program, "ratio");
-        rd->uniform_chunks_loc = glGetUniformLocation(rd->shader.program, "chunks");
+        rd->loc.campos  = glGetUniformLocation(rd->shader.program, "campos");
+        rd->loc.camzoom = glGetUniformLocation(rd->shader.program, "camzoom");
+        rd->loc.width = glGetUniformLocation(rd->shader.program, "width");
+        rd->loc.height = glGetUniformLocation(rd->shader.program, "height");
+        rd->loc.ratio = glGetUniformLocation(rd->shader.program, "ratio");
+        rd->loc.chunks = glGetUniformLocation(rd->shader.program, "chunks");
     }
     
     glUseProgram(rd->shader.program);
-    glUniform2f(rd->uniform_campos_loc, rd->cam.target.x, rd->cam.target.y);
-    glUniform1f(rd->uniform_camzoom_loc, rd->cam.zoom);
-    glUniform1f(rd->uniform_width_loc, rd_get_screen_width());
-    glUniform1f(rd->uniform_height_loc, rd_get_screen_height());
-    glUniform1f(rd->uniform_ratio_loc, rd_get_screen_ratio());
+    glUniform2f(rd->loc.campos, rd->cam.target.x, rd->cam.target.y);
+    glUniform1f(rd->loc.camzoom, rd->cam.zoom);
+    glUniform1f(rd->loc.width, rd_get_screen_width());
+    glUniform1f(rd->loc.height, rd_get_screen_height());
+    glUniform1f(rd->loc.ratio, rd_get_screen_ratio());
     
     glActiveTexture(GL_TEXTURE0 + rd->TBO_texture_unit);
-    glUniform1i(rd->uniform_chunks_loc, rd->TBO_texture_unit);
+    glUniform1i(rd->loc.chunks, rd->TBO_texture_unit);
 }
 
 
@@ -206,7 +209,7 @@ int main(void)
     
 
     if (1) // load world
-    { 
+    {
         char *err_world = load_World("./save/world1.wrd", &win.wrd);
         if (err_world) {
             perror("open");
@@ -230,40 +233,43 @@ int main(void)
         // da_push_zero(&win.wrd_render.chunk_texture);
     } */
     
+    rd_ui_Handel ui_handel = rd_ui_make_Handel((Camera){ .zoom = 1.0 });
+    da_push(&ui_handel.vertices, ((rd_ui_Omni_rect_vertex){
+        .box = (Rect){
+            .pos = { 0.1, 0.2 },
+            .width = 0.1,
+            .height = 0.1
+        },
+        .border_color = BLACK,
+        .fill_color = GRAY,
+        .border_thickness = 0.03,
+        .texture_index = 0
+    }));
+    da_push(&ui_handel.vertices, ((rd_ui_Omni_rect_vertex){
+        .box = (Rect){
+            .pos = { 0.25, 0.2 },
+            .width = 0.1,
+            .height = 0.1
+        },
+        .border_color = BLACK,
+        .fill_color = GRAY,
+        .border_thickness = 0.03,
+        .texture_index = 0
+    }));
+    
+
     while (!rd_should_close())
     {
-        
-
         inputs(&win);
+
+
         send_dynamic_uniform_to_gpu(&win);
         Window_draw(&win);
-        
 
 
-        /* if (0)
-        {
-            // glBindVertexArray(win.wrd_render.VAO);
-            // glBindBuffer(GL_ARRAY_BUFFER, win.wrd_render.VBO);
-            // glBufferData(GL_ARRAY_BUFFER, sizeof(Vec2), &vvv, GL_DYNAMIC_DRAW);
-            // glBindBuffer(GL_TEXTURE_BUFFER, win.wrd_render.TBO);
-            // glBufferSubData(
-            //     GL_TEXTURE_BUFFER, 
-            //     offset * sizeof(win.wrd_render.chunk_texture.arr[0]),
-            //     size   * sizeof(win.wrd_render.chunk_texture.arr[0]),
-            //     &win.wrd_render.chunk_texture.arr[offset]
-            // );
-            // glUseProgram(win.wrd_render.shader.program);
-            // glBindVertexArray(win.wrd_render.VAO);
-            // glBindBuffer(GL_ARRAY_BUFFER, win.wrd_render.VBO);
-            // glDrawArrays(GL_POINTS, 0, 1);
-        
-        }
-        else if (1)
-        {
-            glUseProgram(debug_shader.program);
-            glBindVertexArray(VAO);
-            glDrawArrays(GL_POINTS, 0, ARRAY_LEN(vvv));
-        } */
+        if (rd_is_key_pressed(GLFW_KEY_SPACE))
+            rd_reload_shader(&ui_handel.shader, &ui_handel);
+        rd_ui_draw(&ui_handel);
         
         rd_end_frame();
 
@@ -277,7 +283,8 @@ int main(void)
         // UPDATE_LINE;
     }
     
-    // quit(&win);
+    // rd_ui_free_Handel(&ui_handel);
+    quit(&win);
     
     // Window_free(&win);
     return (0);
