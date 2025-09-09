@@ -133,8 +133,8 @@ void World_draw(Window *win)
     Pos lu_ws = get_chunk_Pos(screen_to_Pos(win->wrd_render.cam, (Vec2){0, 0}));
     Pos rd_ws = get_chunk_Pos(screen_to_Pos(win->wrd_render.cam, (Vec2){ win->render->screen_width, win->render->screen_height }));
     
-    lu_ws = (Pos){ -1,  1 };
-    rd_ws = (Pos){  1, -1 };
+    lu_ws = (Pos){ -3,  3 };
+    rd_ws = (Pos){  3, -3 };
 
     // printf("{0,0} to screen %d,%d\n", tmp.x, tmp.y);
     if (0) printf("form chunk %d,%d to %d,%d\n", 
@@ -194,7 +194,10 @@ void World_draw(Window *win)
         glUseProgram(win->wrd_render.shader.program);
         glBindVertexArray(win->wrd_render.VAO);
         glBindBuffer(GL_ARRAY_BUFFER, win->wrd_render.VBO);
+        glBindTexture(GL_TEXTURE_2D, win->wrd_render.atlas.id);
+        glActiveTexture(GL_TEXTURE0 + win->wrd_render.atlas.texture_unit);
         glBindTexture(GL_TEXTURE_BUFFER, win->wrd_render.TEX);
+        
         glDrawArrays(GL_POINTS, 0, 4 * win->wrd_render.vertices.size);
     }
 }

@@ -367,9 +367,12 @@ typedef struct Render_world
 
     TBO_id VAO;
     TBO_id VBO;
+
     TBO_id TBO;
     Texture_id TEX;
     int TBO_texture_unit;
+
+    Texture atlas;
 } Render_world;
 
 
@@ -383,7 +386,8 @@ typedef struct Window
     // Camera2D cam;
     Render *render;
     
-    Texs  texs;
+    // Texs  texs;
+    
 
     Render_world wrd_render;
 

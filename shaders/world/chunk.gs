@@ -13,8 +13,8 @@ out vec2 TexCoord;
 
 uniform vec2 campos;
 uniform float camzoom;
-uniform float width;
-uniform float height;
+// uniform float width;
+// uniform float height;
 uniform float ratio;
 
 const int chunk_width = 16;

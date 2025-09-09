@@ -52,7 +52,7 @@ void update_current_select(Window *win)
     // ui->select.current_end.y += speed * (target_end.y - ui->select.current_end.y) * frame_delta;
     
     
-    ui->select.selection_box = get_rec_from_pos_to_pos(win->texs.cell_size, 
+    ui->select.selection_box = get_rec_from_pos_to_pos(16 /* win->texs.cell_size */, 
         ui->select.current_start, ui->select.current_end
     );
     
@@ -60,7 +60,7 @@ void update_current_select(Window *win)
     { // side resize
 
         const float win_wh = GET_MIN_WIDTH_HEIGHT(ui->select.current_start, ui->select.current_end);
-        const float cell_size = win->texs.cell_size * (win_wh / 10 + 1);
+        const float cell_size = 16/* win->texs.cell_size */ * (win_wh / 10 + 1);
         const float padding = MOUV_PADDING * H;
         const float width   = cell_size * .5;
 
@@ -142,8 +142,8 @@ void zoom_scroll_callback(GLFWwindow* window, double xoffset, double yoffset)
         ),
         32.0f
     );
-    printf("zoom in or out (zoom: %f)", *zoom_ptr);
-    UPDATE_LINE;
+    // printf("zoom in or out (zoom: %f)", *zoom_ptr);
+    // UPDATE_LINE;
 }
 
 void camera_mouvement_input(Window *win)
@@ -154,26 +154,26 @@ void camera_mouvement_input(Window *win)
     if (rd_is_key_down(GLFW_KEY_D))
     {
         win->wrd_render.cam.target.x += mouv_speed;
-        printf("right cam target.x = %f", win->wrd_render.cam.target.x);
-        UPDATE_LINE;
+        // printf("right cam target.x = %f", win->wrd_render.cam.target.x);
+        // UPDATE_LINE;
     }
     if (rd_is_key_down(GLFW_KEY_A))
     {
         win->wrd_render.cam.target.x -= mouv_speed;
-        printf("left cam target.x = %f", win->wrd_render.cam.target.x);
-        UPDATE_LINE;
+        // printf("left cam target.x = %f", win->wrd_render.cam.target.x);
+        // UPDATE_LINE;
     }
     if (rd_is_key_down(GLFW_KEY_W))
     {
         win->wrd_render.cam.target.y -= mouv_speed;
-        printf("up cam target.y = %f", win->wrd_render.cam.target.y);
-        UPDATE_LINE;
+        // printf("up cam target.y = %f", win->wrd_render.cam.target.y);
+        // UPDATE_LINE;
     }    
     if (rd_is_key_down(GLFW_KEY_S))
     {
         win->wrd_render.cam.target.y += mouv_speed;
-        printf("down cam target.y = %f", win->wrd_render.cam.target.y);
-        UPDATE_LINE;
+        // printf("down cam target.y = %f", win->wrd_render.cam.target.y);
+        // UPDATE_LINE;
     }
     zoom_ptr = &win->wrd_render.cam.zoom;
 }

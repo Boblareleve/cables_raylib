@@ -33,56 +33,76 @@ DA_TYPEDEF_ARRAY(Shader_id);
 typedef struct Render Render;
 typedef void (*rd_resize_callback_t)(Render*, int width, int height);
 
+// typedef struct Color
+// {
+//     union {
+//         struct { // little eldian
+//             uint8_t a;
+//             uint8_t b;
+//             uint8_t g;
+//             uint8_t r;
+//         };
+//         uint32_t packed;
+//         uint8_t array[4];
+//     };
+// } Color;
+// static_assert(sizeof(Color) == 4);
 typedef struct Color
 {
     float r, g, b, a;
 } Color;
+static inline void Color_print(Color c)
+{
+    printf("r%f g%f b%f a%f", c.r, c.g, c.b, c.a);
+}
+static inline char *Color_sprint(Color c)
+{
+    static char buffer[64] = {0};
+    snprintf(buffer, 64, "r%0.2f g%0.2f b%0.2f a%0.2f", c.r, c.g, c.b, c.a);
+    return buffer;
+}
+
+
+#define UNORMF(x) ((x) / 255.)
+#define HEX_TO_COLOR(hex, alpha)\
+    ((Color){\
+        UNORMF((hex >> 8*2) & 0xFF),\
+        UNORMF((hex >> 8*1) & 0xFF),\
+        UNORMF((hex >> 8*0) & 0xFF),\
+        alpha\
+    })
 
 // Some Basic Colors stolen from raylib (thanks)
 // NOTE: Custom raylib color palette for amazing visuals on WHITE background
-#define LIGHTGRAY  (Color){ 1./255. * 200, 1./255. * 200, 1./255. * 200, 1./255. * 255 }   // Light Gray
-#define GRAY       (Color){ 1./255. * 130, 1./255. * 130, 1./255. * 130, 1./255. * 255 }   // Gray
-#define DARKGRAY   (Color){ 1./255. * 80,  1./255. * 80,  1./255. * 80,  1./255. * 255 }   // Dark Gray
-#define YELLOW     (Color){ 1./255. * 253, 1./255. * 249, 1./255. * 0,   1./255. * 255 }   // Yellow
-#define GOLD       (Color){ 1./255. * 255, 1./255. * 203, 1./255. * 0,   1./255. * 255 }   // Gold
-#define ORANGE     (Color){ 1./255. * 255, 1./255. * 161, 1./255. * 0,   1./255. * 255 }   // Orange
-#define PINK       (Color){ 1./255. * 255, 1./255. * 109, 1./255. * 194, 1./255. * 255 }   // Pink
-#define RED        (Color){ 1./255. * 230, 1./255. * 41,  1./255. * 55,  1./255. * 255 }   // Red
-#define MAROON     (Color){ 1./255. * 190, 1./255. * 33,  1./255. * 55,  1./255. * 255 }   // Maroon
-#define GREEN      (Color){ 1./255. * 0,   1./255. * 228, 1./255. * 48,  1./255. * 255 }   // Green
-#define LIME       (Color){ 1./255. * 0,   1./255. * 158, 1./255. * 47,  1./255. * 255 }   // Lime
-#define DARKGREEN  (Color){ 1./255. * 0,   1./255. * 117, 1./255. * 44,  1./255. * 255 }   // Dark Green
-#define SKYBLUE    (Color){ 1./255. * 102, 1./255. * 191, 1./255. * 255, 1./255. * 255 }   // Sky Blue
-#define BLUE       (Color){ 1./255. * 0,   1./255. * 121, 1./255. * 241, 1./255. * 255 }   // Blue
-#define DARKBLUE   (Color){ 1./255. * 0,   1./255. * 82,  1./255. * 172, 1./255. * 255 }   // Dark Blue
-#define PURPLE     (Color){ 1./255. * 200, 1./255. * 122, 1./255. * 255, 1./255. * 255 }   // Purple
-#define VIOLET     (Color){ 1./255. * 135, 1./255. * 60,  1./255. * 190, 1./255. * 255 }   // Violet
-#define DARKPURPLE (Color){ 1./255. * 112, 1./255. * 31,  1./255. * 126, 1./255. * 255 }   // Dark Purple
-#define BEIGE      (Color){ 1./255. * 211, 1./255. * 176, 1./255. * 131, 1./255. * 255 }   // Beige
-#define BROWN      (Color){ 1./255. * 127, 1./255. * 106, 1./255. * 79,  1./255. * 255 }   // Brown
-#define DARKBROWN  (Color){ 1./255. * 76,  1./255. * 63,  1./255. * 47,  1./255. * 255 }   // Dark Brown
+#define LIGHTGRAY  (Color){ .r = UNORMF(200), .g = UNORMF(200), .b = UNORMF(200), .a = UNORMF(255) }   // Light Gray
+#define GRAY       (Color){ .r = UNORMF(130), .g = UNORMF(130), .b = UNORMF(130), .a = UNORMF(255) }   // Gray
+#define DARKGRAY   (Color){ .r = UNORMF(80) , .g = UNORMF(80) , .b = UNORMF(80) , .a = UNORMF(255) }   // Dark Gray
+#define YELLOW     (Color){ .r = UNORMF(253), .g = UNORMF(249), .b = UNORMF(0)  , .a = UNORMF(255) }   // Yellow
+#define GOLD       (Color){ .r = UNORMF(255), .g = UNORMF(203), .b = UNORMF(0)  , .a = UNORMF(255) }   // Gold
+#define ORANGE     (Color){ .r = UNORMF(255), .g = UNORMF(161), .b = UNORMF(0)  , .a = UNORMF(255) }   // Orange
+#define PINK       (Color){ .r = UNORMF(255), .g = UNORMF(109), .b = UNORMF(194), .a = UNORMF(255) }   // Pink
+#define RED        (Color){ .r = UNORMF(230), .g = UNORMF(41) , .b = UNORMF(55) , .a = UNORMF(255) }   // Red
+#define MAROON     (Color){ .r = UNORMF(190), .g = UNORMF(33) , .b = UNORMF(55) , .a = UNORMF(255) }   // Maroon
+#define GREEN      (Color){ .r = UNORMF(0)  , .g = UNORMF(228), .b = UNORMF(48) , .a = UNORMF(255) }   // Green
+#define LIME       (Color){ .r = UNORMF(0)  , .g = UNORMF(158), .b = UNORMF(47) , .a = UNORMF(255) }   // Lime
+#define DARKGREEN  (Color){ .r = UNORMF(0)  , .g = UNORMF(117), .b = UNORMF(44) , .a = UNORMF(255) }   // Dark Green
+#define SKYBLUE    (Color){ .r = UNORMF(102), .g = UNORMF(191), .b = UNORMF(255), .a = UNORMF(255) }   // Sky Blue
+#define BLUE       (Color){ .r = UNORMF(0)  , .g = UNORMF(121), .b = UNORMF(241), .a = UNORMF(255) }   // Blue
+#define DARKBLUE   (Color){ .r = UNORMF(0)  , .g = UNORMF(82) , .b = UNORMF(172), .a = UNORMF(255) }   // Dark Blue
+#define PURPLE     (Color){ .r = UNORMF(200), .g = UNORMF(122), .b = UNORMF(255), .a = UNORMF(255) }   // Purple
+#define VIOLET     (Color){ .r = UNORMF(135), .g = UNORMF(60) , .b = UNORMF(190), .a = UNORMF(255) }   // Violet
+#define DARKPURPLE (Color){ .r = UNORMF(112), .g = UNORMF(31) , .b = UNORMF(126), .a = UNORMF(255) }   // Dark Purple
+#define BEIGE      (Color){ .r = UNORMF(211), .g = UNORMF(176), .b = UNORMF(131), .a = UNORMF(255) }   // Beige
+#define BROWN      (Color){ .r = UNORMF(127), .g = UNORMF(106), .b = UNORMF(79) , .a = UNORMF(255) }   // Brown
+#define DARKBROWN  (Color){ .r = UNORMF(76) , .g = UNORMF(63) , .b = UNORMF(47) , .a = UNORMF(255) }   // Dark Brown
 
-#define WHITE      (Color){ 1./255. * 255, 1./255. * 255, 1./255. * 255, 1./255. * 255 }   // White
-#define BLACK      (Color){ 1./255. * 0,   1./255. * 0,   1./255. * 0,   1./255. * 255 }   // Black
-#define BLANK      (Color){ 1./255. * 0,   1./255. * 0,   1./255. * 0,   1./255. * 0   }   // Blank (Transparent)
-#define MAGENTA    (Color){ 1./255. * 255, 1./255. * 0,   1./255. * 255, 1./255. * 255 }   // Magenta
-#define RAYWHITE   (Color){ 1./255. * 245, 1./255. * 245, 1./255. * 245, 1./255. * 255 }   // My own White (raylib logo)
+#define WHITE      (Color){ .r = UNORMF(255), .g = UNORMF(255), .b = UNORMF(255), .a = UNORMF(255) }   // White
+#define BLACK      (Color){ .r = UNORMF(0)  , .g = UNORMF(0)  , .b = UNORMF(0)  , .a = UNORMF(255) }   // Black
+#define BLANK      (Color){ .r = UNORMF(0)  , .g = UNORMF(0)  , .b = UNORMF(0)  , .a = UNORMF(0)   }   // Blank (Transparent)
+#define MAGENTA    (Color){ .r = UNORMF(255), .g = UNORMF(0)  , .b = UNORMF(255), .a = UNORMF(255) }   // Magenta
+#define RAYWHITE   (Color){ .r = UNORMF(245), .g = UNORMF(245), .b = UNORMF(245), .a = UNORMF(255) }   // My own White (raylib logo)
 
 
-typedef struct Button
-{
-    Rect bounds;
-    enum {
-        rd_normal = 0,
-        rd_focused,
-        rd_pressed,
-        rd_disabled
-    } state;
-
-    const char *text;
-    uint32_t texture_index; // 
-    // bool is_in_world_space;
-} Button;
 
 typedef struct Texture
 {
@@ -160,36 +180,84 @@ typedef struct Shader
 // 256 * 56 = 14.336Kb
 #define BASE_MAX_UI_ELEMENT_COUNT 256 // maybe not enough for option menu ?
 
-typedef struct rd_ui_Omni_rect_vertex
+typedef struct rd_ui_rect
 {
     Rect  box;
     Color fill_color;
     Color border_color;
+    Color on_hover_filter;
+    // uint8_t _padding[4];
     float border_thickness;
-    uint32_t texture_index; // 0 for none start at 1 
-} rd_ui_Omni_rect_vertex;
-// 4 = 56 bytes
-DA_TYPEDEF_ARRAY(rd_ui_Omni_rect_vertex);
+    float texture_index; // 0 for none start at 1
+} rd_ui_rect;
+// static_assert(sizeof(rd_ui_Omni_rect_vertex) == 36 + 4 /* padding */); // /2 = 18
+static_assert(sizeof(rd_ui_rect) == 72);
 
+DA_TYPEDEF_ARRAY(rd_ui_rect);
+// DA_TYPEDEF_ARRAY(da_rd_ui_rect);
 
+typedef enum Button_state
+{
+    rd_normal = 0,
+    rd_focused,
+    rd_pressed, // on rd_mouse_button_pressed
+    rd_down,    // on rd_mouse_button_down
+    rd_up,      // on rd_mouse_button_up
+    rd_disabled = 0b1000000,
+    rd_hiden    = 0b1000001,
+} Button_state;
+typedef struct Button
+{
+    Rect bounds;
+    Button_state state;
+    uint32_t rect_indexe;
+    // const char *text;
+    // uint32_t texture_index; // 
+    // bool is_in_world_space;
+} Button;
+
+static_assert( (rd_hiden   & rd_disabled));
+static_assert(!(rd_normal  & rd_disabled));
+static_assert(!(rd_focused & rd_disabled));
+static_assert(!(rd_pressed & rd_disabled));
+static_assert(!(rd_down    & rd_disabled));
+static_assert(!(rd_up      & rd_disabled));
+
+// typedef struct rd_ui_rect_group
+// {
+//     da_rd_ui_rect vertices;
+//     bool enable;
+//     int offset; // in VBO
+// } rd_ui_rect_group;
+// DA_TYPEDEF_ARRAY(rd_ui_rect_group);
+
+DA_TYPEDEF_ARRAY(uint32_t);
 typedef struct rd_ui_Handel
 {
-    da_rd_ui_Omni_rect_vertex vertices;
-    Camera cam;
+    // da_rd_ui_rect_group rects_groups;
+    da_rd_ui_rect vertices;
+    da_uint32_t indices;
+    
+    float ui_scale;
+    float ui_virtual_width;
+    float ui_virtual_height;
 
+    Texture atlas;
 
     VAO_id VAO;
+    EBO_id EBO;
+    
     VBO_id VBO;
     int VBO_capacity; // in number of vertex
 
     Shader shader;
     struct rd_ui_Shaders_locs
     {
-        GLint campos;
-        GLint camzoom;
-        GLint ratio;
-        // GLint window_width;
-        // GLint window_height;
+        // GLint campos;
+        // GLint camzoom;
+        // GLint ratio;
+        GLint window_width;
+        GLint window_height;
     } loc;
     
 } rd_ui_Handel;
@@ -219,7 +287,7 @@ int rd_dispatch_texture_unit(Shader *shader, GLenum stage);
 // Shader_programme_id get_Shader_programme(const char *shader_name, ...);
 
 
-Render *rd_init(const char *title, int width, int height, rd_resize_callback_t callback);
+Render *rd_init(const char *title, Color background_color, int width, int height, rd_resize_callback_t callback);
 void rd_deinit(void);
 
 void rd_set_clear_color(Color clear_color);
@@ -232,6 +300,8 @@ void rd_set_to_close(void);
 void rd_end_frame(void);
 
 Texture rd_load_texture(const char *tex_name, int tex_unit_index);
+void rd_unload_texture(Texture *tex);
+
 
 // inputs
 
@@ -267,7 +337,7 @@ Rect Rect_transform_by_Camera(Camera cam, Rect rec);
 bool rd_collision_Vec2_Rect(Vec2 vec, Rect rec);
 
 //ui
-rd_ui_Handel rd_ui_make_Handel(Camera cam);
+rd_ui_Handel rd_ui_make_Handel(float scale);
 void rd_ui_free_Handel(rd_ui_Handel *handel);
 bool rd_ui_set_uniforms(Shader_programme_id program, rd_ui_Handel *rd_ui_handel);
 void rd_ui_draw(rd_ui_Handel *handel);

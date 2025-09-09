@@ -8,7 +8,62 @@
 #include <string.h>
 #include <stdlib.h>
 #include <assert.h>
-#include "../engin/set_defines.h"
+// #include "../engin/engin.h"
+
+typedef enum Direction
+{
+    none    = -1,
+    up      = 0b00,
+    right   = 0b01,
+    down    = 0b10,
+    left    = 0b11
+} Direction;
+
+typedef enum
+{
+    empty               = 0b00000000,
+    cable_on            = 0b00010000,
+    cable_off           = 0b00100000,
+    bridge              = 0b00110000,
+
+    u_transistor_off    = 0b01000000,
+    r_transistor_off    = 0b01000001,
+    d_transistor_off    = 0b01000010,
+    l_transistor_off    = 0b01000011,
+
+    u_transistor_o      = 0b01000100,
+    r_transistor_o      = 0b01000101,
+    d_transistor_o      = 0b01000110,
+    l_transistor_o      = 0b01000111,
+    
+    u_transistor_on     = 0b01001000,
+    r_transistor_on     = 0b01001001,
+    d_transistor_on     = 0b01001010,
+    l_transistor_on     = 0b01001011,
+    
+    
+    u_not_gate          = 0b01010000,
+    r_not_gate          = 0b01010001,
+    d_not_gate          = 0b01010010,
+    l_not_gate          = 0b01010011,
+    
+    u_not_gate__o       = 0b01010100,
+    r_not_gate__o       = 0b01010101,
+    d_not_gate__o       = 0b01010110,
+    l_not_gate__o       = 0b01010111,
+
+    u_not_gate_o        = 0b01011000,
+    r_not_gate_o        = 0b01011001,
+    d_not_gate_o        = 0b01011010,
+    l_not_gate_o        = 0b01011011,
+    
+    u_not_gate_oo       = 0b01011100,
+    r_not_gate_oo       = 0b01011101,
+    d_not_gate_oo       = 0b01011110,
+    l_not_gate_oo       = 0b01011111,
+
+    state_trap = 0xff
+} State;
 
 enum Colors {
     red = 0,
@@ -220,7 +275,7 @@ void rotate_rect_90(Img img,
 
 
 
-int main()
+void world_maker()
 {
     int tile_w = 16, tile_h = 16, channels = 4;
 
@@ -231,199 +286,232 @@ int main()
     printf("load: "); Img_print_metadata(img);
     
 
-    state index = 0;
+    State index = 0;
     int cursor = 0;
     
-    if (1)
+    
+    /* empty space */
+    for (; index < cable_on;  index++, cursor += tile_w)
+        ;
+    /* off cables  */
+    for (; index < cable_off; index++, cursor += tile_w)
     {
-        /* empty space */
-        for (; index < cable_on;  index++, cursor += tile_w)
-            ;
-        /* off cables  */
-        for (; index < cable_off; index++, cursor += tile_w)
+        // printf("cp img (cable_on) at index %d (offset %d)\n", index, cursor);
+        copy_rect_to_image(
+            img, output,
+            0, 1 * tile_h,
+            tile_w, tile_h,
+            cursor, 0
+        );
+        
+        if (1) 
         {
-            // printf("cp img (cable_on) at index %d (offset %d)\n", index, cursor);
+            if (index & 0b0001)
+                copy_rect_to_image(
+                    img, output,
+                    1 * tile_w + 6, 1 * tile_h,
+                    4, 6,
+                    cursor + 6, 0
+                );
+            if (index & 0b0010)
+                copy_rect_to_image(
+                    img, output,
+                    1 * tile_w + 10, 1 * tile_h + 6,
+                    6, 4,
+                    cursor + 10, 6
+                );
+            if (index & 0b0100)
+                copy_rect_to_image(
+                    img, output,
+                    1 * tile_w + 6, 1 * tile_h + 10,
+                    4, 6,
+                    cursor + 6, 10
+                );
+            if (index & 0b1000)
+                copy_rect_to_image(
+                    img, output,
+                    1 * tile_w, 1 * tile_h + 6,
+                    6, 4,
+                    cursor, 6
+                );
+        }
+    }
+    /* on calbes   */
+    for (; index < bridge; index++, cursor += tile_w)
+    {
+        copy_rect_to_image(
+            img, output,
+            0, 2 * tile_h,
+            tile_w, tile_h, 
+            cursor, 0
+        );
+
+        if (1) 
+        {
+            if (index & 0b0001)
+                copy_rect_to_image(
+                    img, output,
+                    1 * tile_w + 6, 2 * tile_h,
+                    4, 6,
+                    cursor + 6, 0
+                );
+            if (index & 0b0010)
+                copy_rect_to_image(
+                    img, output,
+                    1 * tile_w + 10, 2 * tile_h + 6,
+                    6, 4,
+                    cursor + 10, 6
+                );
+            if (index & 0b0100)
+                copy_rect_to_image(
+                    img, output,
+                    1 * tile_w + 6, 2 * tile_h + 10,
+                    4, 6,
+                    cursor + 6, 10
+                );
+            if (index & 0b1000)
+                copy_rect_to_image(
+                    img, output,
+                    1 * tile_w, 2 * tile_h + 6,
+                    6, 4,
+                    cursor, 6
+                );
+        }
+    }
+    /* bridges */
+    for (; index < u_transistor_off; index++, cursor += tile_w)
+    {
+        copy_rect_to_image(
+            img, output,
+            0, 3 * tile_h,
+            tile_w, tile_h, 
+            cursor, 0
+        );
+    }
+    
+    /* transistors */
+    {
+        for (int x_src_cursor = 0; 
+            x_src_cursor < 3 * tile_w; 
+            x_src_cursor += tile_w
+        ) {
+            for (Direction i = up; 
+                    i <= left; 
+                    i++, cursor += tile_w, index++
+            ) {
+                copy_rect_to_image(
+                    img, output,
+                    x_src_cursor, 4 * tile_h,
+                    tile_w, tile_h, 
+                    cursor, 0
+                );
+                rotate_rect_90(
+                    output, 
+                    cursor, 0, 
+                    tile_w, tile_h, 
+                    i
+                );
+            }
+        }
+    }
+    for (; index < u_not_gate; index++, cursor += tile_w)
+        ;
+
+    /* not gate */
+    {
+        for (Direction i = up;
+                        i <= left;
+                        i++, cursor += tile_w, index++
+        ) {
             copy_rect_to_image(
                 img, output,
-                0, 1 * tile_h,
+                0, 5 * tile_h,
                 tile_w, tile_h,
                 cursor, 0
             );
-            
-            if (1) 
-            {
-                if (index & 0b0001)
-                    copy_rect_to_image(
-                        img, output,
-                        1 * tile_w + 6, 1 * tile_h,
-                        4, 6,
-                        cursor + 6, 0
-                    );
-                if (index & 0b0010)
-                    copy_rect_to_image(
-                        img, output,
-                        1 * tile_w + 10, 1 * tile_h + 6,
-                        6, 4,
-                        cursor + 10, 6
-                    );
-                if (index & 0b0100)
-                    copy_rect_to_image(
-                        img, output,
-                        1 * tile_w + 6, 1 * tile_h + 10,
-                        4, 6,
-                        cursor + 6, 10
-                    );
-                if (index & 0b1000)
-                    copy_rect_to_image(
-                        img, output,
-                        1 * tile_w, 1 * tile_h + 6,
-                        6, 4,
-                        cursor, 6
-                    );
-            }
-        }
-        /* on calbes   */
-        for (; index < bridge; index++, cursor += tile_w)
-        {
-            copy_rect_to_image(
-                img, output,
-                0, 2 * tile_h,
-                tile_w, tile_h, 
-                cursor, 0
-            );
-
-            if (1) 
-            {
-                if (index & 0b0001)
-                    copy_rect_to_image(
-                        img, output,
-                        1 * tile_w + 6, 2 * tile_h,
-                        4, 6,
-                        cursor + 6, 0
-                    );
-                if (index & 0b0010)
-                    copy_rect_to_image(
-                        img, output,
-                        1 * tile_w + 10, 2 * tile_h + 6,
-                        6, 4,
-                        cursor + 10, 6
-                    );
-                if (index & 0b0100)
-                    copy_rect_to_image(
-                        img, output,
-                        1 * tile_w + 6, 2 * tile_h + 10,
-                        4, 6,
-                        cursor + 6, 10
-                    );
-                if (index & 0b1000)
-                    copy_rect_to_image(
-                        img, output,
-                        1 * tile_w, 2 * tile_h + 6,
-                        6, 4,
-                        cursor, 6
-                    );
-            }
-        }
-        /* bridges */
-        for (; index < u_transistor_off; index++, cursor += tile_w)
-        {
-            copy_rect_to_image(
-                img, output,
-                0, 3 * tile_h,
-                tile_w, tile_h, 
-                cursor, 0
+            rotate_rect_90(
+                output,
+                cursor, 0,
+                tile_w, tile_h,
+                i
             );
         }
         
-        /* transistors */
-        {
-            for (int x_src_cursor = 0; 
-                x_src_cursor < 3 * tile_w; 
-                x_src_cursor += tile_w
-            ) {
-                for (Direction i = up; 
-                        i <= left; 
+        for (int _ = 0; _ < 3; _++) 
+        for (Direction i = up;
+                        i <= left;
                         i++, cursor += tile_w, index++
-                ) {
-                    copy_rect_to_image(
-                        img, output,
-                        x_src_cursor, 4 * tile_h,
-                        tile_w, tile_h, 
-                        cursor, 0
-                    );
-                    rotate_rect_90(
-                        output, 
-                        cursor, 0, 
-                        tile_w, tile_h, 
-                        i
-                    );
-                }
-            }
-        }
-        for (; index < u_not_gate; index++, cursor += tile_w)
-            ;
-
-        /* not gate */
-        {
-            for (Direction i = up;
-                           i <= left;
-                           i++, cursor += tile_w, index++
-            ) {
-                copy_rect_to_image(
-                    img, output,
-                    0, 5 * tile_h,
-                    tile_w, tile_h,
-                    cursor, 0
-                );
-                rotate_rect_90(
-                    output,
-                    cursor, 0,
-                    tile_w, tile_h,
-                    i
-                );
-            }
-            
-            for (int _ = 0; _ < 3; _++) 
-            for (Direction i = up;
-                           i <= left;
-                           i++, cursor += tile_w, index++
-            ) {
-                copy_rect_to_image(
-                    img, output,
-                    tile_w, 5 * tile_h,
-                    tile_w, tile_h,
-                    cursor, 0
-                );
-                rotate_rect_90(
-                    output,
-                    cursor, 0,
-                    tile_w, tile_h,
-                    i
-                );
-            }
-        }
-        
-    }
-    else if (0)
-    {
-        for (int i = 0; i < output.w; i++)
-        {
-            Img_get_px_pt(output, i, 1)[red] = 100;
-            Img_get_px_pt(output, i, 2)[red] = 100;
-            Img_get_px_pt(output, i, 3)[red] = 100;
-            Img_get_px_pt(output, i, 1)[alpha] = UINT8_MAX;
-            Img_get_px_pt(output, i, 2)[alpha] = UINT8_MAX;
-            Img_get_px_pt(output, i, 3)[alpha] = UINT8_MAX;
+        ) {
+            copy_rect_to_image(
+                img, output,
+                tile_w, 5 * tile_h,
+                tile_w, tile_h,
+                cursor, 0
+            );
+            rotate_rect_90(
+                output,
+                cursor, 0,
+                tile_w, tile_h,
+                i
+            );
         }
     }
-    else ;
+    
+    
+    
 
     stbi_image_free(img.data);
     
     printf("whta\n");
-    if (!Img_stbi_write_png(output, "./assets/new_atlas.png"))//, final_w, final_h, channels, output, final_w * channels);
+    if (!Img_stbi_write_png(output, "./assets/world_atlas.png"))//, final_w, final_h, channels, output, final_w * channels);
         printf("not SAVED !\n");
     else printf("img saved\n");
     stbi_image_free(output.data);
+}
+
+void ui_maker()
+{
+    int tile_w = 16, tile_h = 16, channels = 4;
+    int tile_w_stride = 20;
+    int icons_count = 64;
+
+    Img output = Img_make(channels, tile_w_stride * 64, tile_h);
+
+    Img icon = Img_stbi_load("/home/augustin/C/cables_raylib/assets/cursor.png", 4);
+        // Img_stbi_load("/home/augustin/C/cables_raylib/assets/rotate_cursor.png", 4)
+    // };
+
+    int cursor = 0;
+    copy_rect_to_image(
+        icon, output,
+        0, 0,
+        tile_w, tile_h,
+        cursor, 0
+    );
+    cursor += tile_w_stride;
+
+    rotate_rect_90(icon, 0, 0, icon.w, icon.h, right);
+
+    copy_rect_to_image(
+        icon, output,
+        0, 0,
+        tile_w, tile_h,
+        cursor, 0
+    );
+    cursor += tile_w_stride;
+
+    if (!Img_stbi_write_png(output, "../assets/ui_atlas.png"))
+        printf("not SAVED !\n");
+    else printf("img saved\n");
+}
+
+int main(int argc, char **argv)
+{
+    if (argc != 2) return 1;
+
+
+    if (argv[1][0] == 'u')      ui_maker();
+    else if (argv[1][0] == 'w') world_maker();
+
     return 0;
 }

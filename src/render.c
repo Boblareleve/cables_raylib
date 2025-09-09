@@ -148,9 +148,9 @@ static GLFWwindow *init_GLFWwindow(const char *title, int width, int height)
 #endif
     
     glViewport(0, 0, width, height);
-    rd_set_clear_color(GRAY);
-    glClear(GL_COLOR_BUFFER_BIT);
-    glfwSwapBuffers(window);
+    // rd_set_clear_color(GRAY);
+    // glClear(GL_COLOR_BUFFER_BIT);
+    // glfwSwapBuffers(window);
 
     return window;
 }
@@ -167,12 +167,20 @@ void rd_set_to_close(void)
 // do not set uniform loc
 Texture rd_load_texture(const char *tex_name, int tex_unit_index)
 {
-    assert(0 <= tex_unit_index && tex_unit_index < 16);
-
+    if (tex_unit_index < 0 || 16 <= tex_unit_index)
+    {
+        rd_log(rd_error, "fail to load texture %s, invalid tui value: %d\n", tex_name, tex_unit_index);
+        return (Texture){0};
+    }
+    
     int width, height, nrChannels = 0;
     stbi_set_flip_vertically_on_load(true); // tell stb_image.h to flip loaded texture's on the y-axis.
     uint8_t *data = stbi_load(tex_name, &width, &height, &nrChannels, 0); 
-    if (!data) return (Texture){0};
+    if (!data)
+    {
+        rd_log(rd_error, "fail to load texture %s, stbi failed", tex_name);
+        return (Texture){0};
+    }
 
 
     // GL_INVALID_VALUE; // ?? 
@@ -220,6 +228,12 @@ Texture rd_load_texture(const char *tex_name, int tex_unit_index)
 
     stbi_image_free(data);
     return res;
+}
+
+void rd_unload_texture(Texture *tex)
+{
+    UNUSED(tex);
+    TODO("unload texture");
 }
 
 
@@ -289,7 +303,7 @@ static void rd_calculate_frame_time(void)
     current_render->frame_time.fps = (int)(1. / current_render->frame_time.delta_time);
 }
 
-static void fun_swap_buffers(GLFWwindow *window)
+static void rd_swap_buffers(GLFWwindow *window)
 {
     glfwSwapBuffers(window);
 }
@@ -301,7 +315,7 @@ static void fun_glClear(void)
 
 void rd_end_frame(void)
 {
-    fun_swap_buffers(current_render->glfw);
+    rd_swap_buffers(current_render->glfw);
     rd_calculate_frame_time();
 
     // glBlendFunc(GL_SRC_ALPHA, GL_ONE);
@@ -310,6 +324,14 @@ void rd_end_frame(void)
     fun_glClear();
     rd_poll_inputs();
 }
+
+// #define uint8_color_to_float(channel) ((float)(channel) / UINT8_MAX)
+// #define hex_color_to_vec4(color)
+//     uint8_color_to_float((color).r),
+//     uint8_color_to_float((color).g),
+//     uint8_color_to_float((color).b),
+//     uint8_color_to_float((color).a)
+
 void rd_set_clear_color(Color clear_color)
 {
     glClearColor(clear_color.r, clear_color.g, clear_color.b, clear_color.a);
@@ -488,7 +510,7 @@ bool rd_collision_Vec2_Rect(Vec2 vec, Rect rec)
 
 
 
-Render *rd_init(const char *title, int width, int height, rd_resize_callback_t callback)
+Render *rd_init(const char *title, Color background_color, int width, int height, rd_resize_callback_t callback)
 {
     Render *res = calloc(1, sizeof(Render));
     if (!res) return NULL;
@@ -499,6 +521,8 @@ Render *rd_init(const char *title, int width, int height, rd_resize_callback_t c
         .inputs = { .keys = {0} },
         .resize_callback = callback,
     };
+    rd_set_clear_color(background_color);
+    glClear(GL_COLOR_BUFFER_BIT);
     
     glfwSwapInterval(1);
     if (0) printf("window refreshRate: %i\n", glfwGetVideoMode(glfwGetPrimaryMonitor())->refreshRate);
@@ -742,26 +766,43 @@ int rd_dispatch_texture_unit(Shader *shader, GLenum stage)
     static int max_fragment_tiu = -1;
     if (max_fragment_tiu == -1) max_fragment_tiu = rd_get_GL_MAX_TEXTURE_IMAGE_UNITS();
 
-    if (max_combined_tiu >= shader->tiu_vertex_dispatcher
-                          + shader->tiu_geometry_dispatcher 
-                          + shader->tiu_fragment_dispatcher)
+    if (shader->tiu_vertex_dispatcher
+      + shader->tiu_geometry_dispatcher 
+      + shader->tiu_fragment_dispatcher >= max_combined_tiu
+    ) {
+        rd_log(rd_error, "dispatching tui: too many combined texture (max combined %d and have %d in vs, %d in gs and %d in fs)", 
+            max_combined_tiu,
+            shader->tiu_vertex_dispatcher,
+            shader->tiu_geometry_dispatcher,
+            shader->tiu_fragment_dispatcher
+        );
         return -1;
+    }
     
     switch (stage)
     {
     case GL_VERTEX_SHADER:
-        if (max_vertex_tiu >= shader->tiu_vertex_dispatcher)
+        if (shader->tiu_vertex_dispatcher >= max_vertex_tiu)
+        {
+            rd_log(rd_error, "dispatching tui: too many vertex texture (%d)", shader->tiu_vertex_dispatcher);
             return -1;
+        }
         return shader->tiu_vertex_dispatcher++;
 
     case GL_GEOMETRY_SHADER:
-        if (max_geometry_tiu >= shader->tiu_geometry_dispatcher)
+        if (shader->tiu_geometry_dispatcher >= max_geometry_tiu)
+        {
+            rd_log(rd_error, "dispatching tui: too many geometry texture (%d)", shader->tiu_geometry_dispatcher);
             return -1;
+        }
         return shader->tiu_geometry_dispatcher++;
 
     case GL_FRAGMENT_SHADER:
-        if (max_fragment_tiu >= shader->tiu_fragment_dispatcher)
+        if (shader->tiu_fragment_dispatcher >= max_fragment_tiu)
+        {
+            rd_log(rd_error, "dispatching tui: too many geometry texture (%d)", shader->tiu_fragment_dispatcher);
             return -1;
+        }
         return shader->tiu_fragment_dispatcher++;
 
     default: UNREACHABLE("[ERROR] invalide shader stage");

@@ -43,6 +43,7 @@ typedef struct Arg_Shell_List
     Strb compiler;
     Strb bin_name;
 
+    bool run;
     int64_t proc_max;
 } Arg_Shell_List;
 Arg_Shell_List arg_parse(const sa_Strv *args)
@@ -144,6 +145,9 @@ Arg_Shell_List arg_parse(const sa_Strv *args)
             res.bin_name.size = 0;
             Strb_cat_Str(&res.bin_name, args->arr[i]);
         }
+        else if (Str_equal(arg, Strv_cstr("-run"))
+              || Str_equal(arg, Strv_cstr("-r")))
+            res.run = true;
         else if (Str_equal(arg, Strv_cstr("-help"))
               || Str_equal(arg, Strv_cstr("-h")))
         {
@@ -282,7 +286,6 @@ Arg_Shell_List arg_parse(const sa_Strv *args)
 Strv strip_file_path(Strv path)
 {
     int last_slash = -1;
-    int i = 0;
     for (int i = 0; i < path.size; i++)
         if (path.arr[i] == '/')
             last_slash = i;
@@ -353,9 +356,9 @@ int main(int argc, char **argv)
     
     // da_print(&parameters.comp_flags, Str_print);
 
+    Cmd cmd = {0};
     if (parameters.mode == once)
     {
-        Cmd cmd = {0};
         da_push(&cmd, parameters.compiler.self);
         
         foreach_ptr (Strv, file, &parameters.source_files)
@@ -389,7 +392,6 @@ int main(int argc, char **argv)
             Proc_wait(*proc);
         da_free(&procs);
         
-        Cmd cmd = {0};
         da_push_many(&cmd, parameters.compiler.self, Strv_cstr("-o"), parameters.bin_name.self);
         
         foreach_ptr (Strv, src_files, &parameters.source_files)
@@ -408,6 +410,16 @@ int main(int argc, char **argv)
         da_free(&cmd);
     }
     else UNREACHABLE("parse ?");
+
+    if (parameters.run)
+    {
+        Strb sb = Strb_cstr("./");
+        Strb_cat_Str(&sb, parameters.bin_name);
+        da_push_many(&cmd, sb.self);
+        Cmd_run(cmd);
+        Strb_free(sb);
+    }
+
 
     sa_free(args);
     return 0;
