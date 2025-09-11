@@ -103,7 +103,8 @@ static void set_rd_ui_rect_vpa(void)
 }
    
 
-typedef uint32_t rd_ui_rect_handel;
+/* typedef uint32_t rd_ui_rect_handel;
+
 rd_ui_rect_handel rd_ui_append_rect(rd_ui_Handel *handel, rd_ui_rect rect)
 {
     rd_ui_rect_handel res = handel->vertices.size;
@@ -111,11 +112,11 @@ rd_ui_rect_handel rd_ui_append_rect(rd_ui_Handel *handel, rd_ui_rect rect)
 
     return res;
 }
-
 void rd_ui_enable_rect(rd_ui_Handel *handel, rd_ui_rect_handel rect)
 {
     da_push(&handel->indices, 0);
-}
+} */
+
 
 rd_ui_Handel rd_ui_make_Handel(float scale)
 { // draw

@@ -708,8 +708,8 @@ Ui Ui_make(Render *render)
 
     const char *file_save_path = "./save/world1.wrd";
 
-    
-    return (Ui){
+    return (Ui){0};
+/*     return (Ui){
         .mode = mode_idle,
         .mouse_pos = {0},
         .edit = {
@@ -773,7 +773,9 @@ Ui Ui_make(Render *render)
             .bounds = {0},
         },
     };
+ */
 }
+
 void Ui_free(Ui *ui)
 {
     Strb_free(ui->select.clipboard);

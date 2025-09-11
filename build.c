@@ -9,8 +9,11 @@
 
 
 #define SRC_DIR "./src/"
+#define RENDER_DIR "./render/"
 #define ENGIN_DIR "./engin/"
 #define DOT_O_DIR "./object/"
+
+#define MY_LIB_PATH "/data/code/my_lib"
 
 
 SA_TYPEDEF_ARRAY(Strv);
@@ -66,7 +69,7 @@ Arg_Shell_List arg_parse(const sa_Strv *args)
             else res.proc_max = Str_atoll(Strv_stride(arg, 2), NULL);
         }
         else if (Str_start_with_cstr(arg, "-t")
-              || Str_start_with_cstr(arg, "-target")
+              || Str_start_with_cstr(arg, "--target")
         ) {
             if (args->size <= ++i)
             {
@@ -84,7 +87,7 @@ Arg_Shell_List arg_parse(const sa_Strv *args)
             else printf("[WARNING] unreconize target fallback to default\n");
         }
         else if (Str_start_with_cstr(arg, "-m")
-              || Str_start_with_cstr(arg, "-mode")
+              || Str_start_with_cstr(arg, "--mode")
         ) {
             if (args->size <= ++i)
             {
@@ -102,7 +105,7 @@ Arg_Shell_List arg_parse(const sa_Strv *args)
             else printf("[WARNING] unreconize target fallback to default\n");
         }
         else if (Str_start_with_cstr(arg, "-s")
-              || Str_start_with_cstr(arg, "-scoop")
+              || Str_start_with_cstr(arg, "--scoop")
         ) {
             if (args->size <= ++i)
             {
@@ -118,7 +121,7 @@ Arg_Shell_List arg_parse(const sa_Strv *args)
             else printf("[WARNING] unreconized scoop fallback to default\n");
         }
         else if (Str_start_with_cstr(arg, "-p")
-              || Str_start_with_cstr(arg, "-platform")
+              || Str_start_with_cstr(arg, "--platform")
         ) {
             if (args->size <= ++i)
             {
@@ -145,19 +148,19 @@ Arg_Shell_List arg_parse(const sa_Strv *args)
             res.bin_name.size = 0;
             Strb_cat_Str(&res.bin_name, args->arr[i]);
         }
-        else if (Str_equal(arg, Strv_cstr("-run"))
+        else if (Str_equal(arg, Strv_cstr("--run"))
               || Str_equal(arg, Strv_cstr("-r")))
             res.run = true;
-        else if (Str_equal(arg, Strv_cstr("-help"))
+        else if (Str_equal(arg, Strv_cstr("--help"))
               || Str_equal(arg, Strv_cstr("-h")))
         {
             printf("arg list\n");
-            printf("    -j<number>                   how many thread to use (a positive number 0 fall back to 1)\n");
-            printf("    -o <name>                    name of the binary (name: a string)\n");
-            printf("    (-m)|(-mode) <mode>          how to build (\"inc\", \"once\", \"all\")\n");
-            printf("    (-t)|(-target) <target>      what config to use (\"debug\", \"release\", \"gdb\")\n");
-            printf("    (-s)|(-scoop) <scoop>        what part of the project to build (\"engin\", \"game\")\n");
-            printf("    (-p)|(-platform) <platform>  what platform to build for (\"linux\", \"windows\")\n");
+            printf("    -j<number>                    how many thread to use (a positive number 0 fall back to 1)\n");
+            printf("    -o <name>                     name of the binary (name: a string)\n");
+            printf("    (-m)|(--mode) <mode>          how to build (\"inc\", \"once\", \"all\")\n");
+            printf("    (-t)|(--target) <target>      what config to use (\"debug\", \"release\", \"gdb\")\n");
+            printf("    (-s)|(--scoop) <scoop>        what part of the project to build (\"engin\", \"game\")\n");
+            printf("    (-p)|(--platform) <platform>  what platform to build for (\"linux\", \"windows\")\n");
             exit(0);
         }
         else
@@ -170,15 +173,16 @@ Arg_Shell_List arg_parse(const sa_Strv *args)
     }
 
     { // general flags
-        Strb build_path = Strb_cstr("-I");
-        Strb_cat(&build_path, getenv("HOME"));
-        Strb_cat(&build_path, "/C/my_lib");
-        Strb_cat_null(&build_path);
+        // Strb build_path = Strb_cstr("-I");
+        // Strb_cat(&build_path, getenv("HOME"));
+        // Strb_cat(&build_path, MY_LIB_PATH);
+        // Strb_cat_null(&build_path);
         
         da_push_many(&res.comp_flags,
             Strv_cstr("-I./includes"),
             Strv_cstr("-I."),
-            build_path.self,
+            Strv_cstr("-I/usr/includes"),
+            Strv_cstr("-I"MY_LIB_PATH),
             Strv_cstr("-Wall"),
             Strv_cstr("-Wextra"),
             Strv_cstr("-Wno-missing-braces"),
@@ -196,7 +200,7 @@ Arg_Shell_List arg_parse(const sa_Strv *args)
             da_push_many(&res.link_flags, 
                 Strv_cstr("-L./lib"), 
                 Strv_cstr("-lm"),
-                Strv_cstr("-lglfw"),
+                Strv_cstr("-lglfw3"),
                 Strv_cstr("-ldl")
             );
         }
@@ -263,9 +267,9 @@ Arg_Shell_List arg_parse(const sa_Strv *args)
                 Strv_cstr(SRC_DIR"lib_impl.c"),
                 Strv_cstr(SRC_DIR"draw.c"),
                 Strv_cstr(SRC_DIR"ui_input.c"),
-                Strv_cstr(SRC_DIR"render.c"),
-                Strv_cstr(SRC_DIR"shader.c"),
-                Strv_cstr(SRC_DIR"rd_ui.c")
+                Strv_cstr(RENDER_DIR"render.c"),
+                Strv_cstr(RENDER_DIR"rd_ui.c"),
+                Strv_cstr(SRC_DIR"shader.c")
             );
         }
         else if (res.scoop == engin) 
@@ -338,7 +342,7 @@ int main(int argc, char **argv)
     { // go_rebuild urself
         da_Strb rebuild_flags = {0};
         
-        da_push(&rebuild_flags, Strb_fstr("-I%s/C/my_lib", getenv("HOME")));
+        da_push(&rebuild_flags, Strb_cstr("-I"MY_LIB_PATH));
         da_push(&rebuild_flags, Strb_cstr("-Wall"));
         da_push(&rebuild_flags, Strb_cstr("-Wextra"));
         da_push(&rebuild_flags, Strb_cstr("-ggdb"));
